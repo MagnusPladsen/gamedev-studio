@@ -31,6 +31,8 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import type { Note } from "@/types";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 
 const ACCENT = "#a3e635";
 const SAVE_DELAY = 600;
@@ -391,6 +393,7 @@ export default function NotebookPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
   const version = useStorageVersion();
 
   const [draft, setDraft] = useState<Note | null>(null);
@@ -705,7 +708,8 @@ export default function NotebookPage() {
               </button>
             )}
           </div>
-          <div className="relative">
+          <div className="flex gap-1.5">
+          <div className="relative flex-1">
             <div className="flex">
               <button
                 onClick={() => createNote("blank")}
@@ -743,9 +747,11 @@ export default function NotebookPage() {
               </div>
             )}
           </div>
+          <PasteButton type="note" />
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2">
+        <div {...pasteTriggerProps("note")} className="flex-1 overflow-y-auto p-2">
           {notes.length === 0 ? (
             <p className="text-xs text-center px-4 py-8" style={{ color: "var(--text-muted)" }}>
               No notes yet.
@@ -766,11 +772,12 @@ export default function NotebookPage() {
                   const p = checklistProgress(n.content);
                   const active = draft?.id === n.id;
                   return (
+                    <div key={n.id} className="relative">
                     <button
-                      key={n.id}
+                      {...assetTriggerProps({ type: "note", id: n.id })}
                       data-note-id={n.id}
                       onClick={onListClick}
-                      className="w-full text-left px-2.5 py-2 rounded-lg mb-0.5 transition-colors hover:bg-[var(--bg-hover)]"
+                      className="w-full text-left px-2.5 max-md:pr-9 py-2 rounded-lg mb-0.5 transition-colors hover:bg-[var(--bg-hover)]"
                       style={{ background: active ? "var(--bg-hover)" : undefined, boxShadow: active ? `inset 2px 0 0 ${ACCENT}` : undefined }}
                     >
                       <div className="flex items-center gap-1.5">
@@ -796,6 +803,10 @@ export default function NotebookPage() {
                         {relativeTime(n.updatedAt)}
                       </div>
                     </button>
+                    <div className="md:hidden absolute right-1 top-1/2 -translate-y-1/2">
+                      <AssetMenuButton asset={{ type: "note", id: n.id }} label={n.title || "Untitled note"} />
+                    </div>
+                    </div>
                   );
                 })}
               </div>
@@ -855,8 +866,8 @@ export default function NotebookPage() {
                   onClick={() => update({ pinned: !draft.pinned })}
                   className="p-1.5 rounded-md"
                   style={{ color: draft.pinned ? ACCENT : "var(--text-secondary)", border: "1px solid var(--border)" }}
-                  title={draft.pinned ? "Unpin" : "Pin to the top of the list"}
-                  aria-label={draft.pinned ? "Unpin note" : "Pin note"}
+                  title={draft.pinned ? "Unpin in Notebook" : "Pin in Notebook"}
+                  aria-label={draft.pinned ? "Unpin in Notebook" : "Pin in Notebook"}
                 >
                   {draft.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
                 </button>

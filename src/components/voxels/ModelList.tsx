@@ -3,6 +3,8 @@
 import { Box, Image as ImageIcon, Plus, Trash2 } from "lucide-react";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { LinkedAssets } from "@/components/LinkedAssets";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { VoxelModel } from "@/types";
 
 interface Props {
@@ -18,8 +20,11 @@ interface Props {
 const iconButtonStyle: React.CSSProperties = { color: "var(--accent)" };
 
 function ModelRow({ model, isActive, onOpen, onDelete }: { model: VoxelModel; isActive: boolean; onOpen(): void; onDelete(): void }): React.JSX.Element {
+  const { assetTriggerProps } = useAssetMenu();
   return (
     <div
+      {...assetTriggerProps({ type: "model", id: model.id })}
+      tabIndex={0}
       className="group flex items-center gap-1.5 px-2 py-1.5 rounded text-xs cursor-pointer hover:bg-[var(--bg-hover)]"
       style={{ background: isActive ? "var(--bg-hover)" : undefined, color: isActive ? "var(--text-primary)" : "var(--text-secondary)" }}
       onClick={onOpen}
@@ -31,24 +36,28 @@ function ModelRow({ model, isActive, onOpen, onDelete }: { model: VoxelModel; is
         <Box className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} />
       )}
       <span className="flex-1 truncate">{model.name}</span>
-      <button
-        onClick={(event) => {
-          event.stopPropagation();
-          onDelete();
-        }}
-        className="opacity-0 group-hover:opacity-100 max-md:opacity-100 shrink-0"
-        style={{ color: "var(--red)" }}
-        title={`Delete ${model.name}`}
-        aria-label={`Delete ${model.name}`}
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
+      <div className="flex items-center shrink-0">
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          className="opacity-0 group-hover:opacity-100 max-md:opacity-100 shrink-0"
+          style={{ color: "var(--red)" }}
+          title={`Delete ${model.name}`}
+          aria-label={`Delete ${model.name}`}
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+        <AssetMenuButton asset={{ type: "model", id: model.id }} label={model.name} />
+      </div>
     </div>
   );
 }
 
 /** The project's voxel models, ways to start one, examples and links for the open model. */
 export function ModelList({ projectId, models, activeModelId, onOpen, onDelete, onNew, onFromSprite }: Props): React.JSX.Element {
+  const { pasteTriggerProps } = useAssetMenu();
   const savedModelId = models.some((model) => model.id === activeModelId) ? activeModelId : null;
   return (
     <div className="p-3 space-y-3">
@@ -56,6 +65,7 @@ export function ModelList({ projectId, models, activeModelId, onOpen, onDelete, 
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Models</span>
           <div className="flex items-center gap-1">
+            <PasteButton type="model" />
             <button onClick={onFromSprite} className="p-1 rounded" style={iconButtonStyle} title="New model from a sprite" aria-label="New model from a sprite">
               <ImageIcon className="w-4 h-4" />
             </button>
@@ -64,7 +74,7 @@ export function ModelList({ projectId, models, activeModelId, onOpen, onDelete, 
             </button>
           </div>
         </div>
-        <div className="space-y-0.5 max-md:max-h-48 max-md:overflow-y-auto">
+        <div {...pasteTriggerProps("model")} className="space-y-0.5 max-md:max-h-48 max-md:overflow-y-auto">
           {models.map((model) => (
             <ModelRow
               key={model.id}

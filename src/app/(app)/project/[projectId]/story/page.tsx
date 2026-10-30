@@ -34,6 +34,8 @@ import type { StoryEntry } from "@/types";
 import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 
 const ENTRY_TYPES = [
   { value: "character" as const, label: "Character", icon: User, color: "#a78bfa" },
@@ -82,6 +84,7 @@ export default function StoryPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
   const version = useStorageVersion();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -516,14 +519,17 @@ export default function StoryPage() {
               <Network className="w-3.5 h-3.5" />
             </button>
           </div>
-          <button
-            onClick={() => setShowNewForm(!showNewForm)}
-            className="w-full flex items-center justify-center gap-1 py-1.5 rounded-md text-xs font-medium"
-            style={{ background: "var(--accent)", color: "white" }}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            New entry
-          </button>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setShowNewForm(!showNewForm)}
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md text-xs font-medium"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New entry
+            </button>
+            <PasteButton type="story" />
+          </div>
         </div>
 
         {showNewForm && (
@@ -561,7 +567,7 @@ export default function StoryPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto py-1">
+        <div {...pasteTriggerProps("story")} className="flex-1 overflow-y-auto py-1">
           {ENTRY_TYPES.map((type) => {
             const items = grouped[type.value] ?? [];
             const collapsed = collapsedGroups.has(type.value);
@@ -575,17 +581,22 @@ export default function StoryPage() {
                 </button>
                 {!collapsed &&
                   items.map((entry) => (
-                    <button
-                      key={entry.id}
-                      onClick={() => selectEntry(entry.id)}
-                      className="w-full text-left flex items-center gap-2 pl-8 pr-3 py-1.5 text-xs transition-colors"
-                      style={{
-                        color: stored?.id === entry.id ? "var(--text-primary)" : "var(--text-secondary)",
-                        background: stored?.id === entry.id ? "var(--bg-hover)" : "transparent",
-                      }}
-                    >
-                      <span className="truncate">{entry.title}</span>
-                    </button>
+                    <div key={entry.id} className="relative">
+                      <button
+                        {...assetTriggerProps({ type: "story", id: entry.id })}
+                        onClick={() => selectEntry(entry.id)}
+                        className="w-full text-left flex items-center gap-2 pl-8 pr-3 max-md:pr-9 py-1.5 text-xs transition-colors"
+                        style={{
+                          color: stored?.id === entry.id ? "var(--text-primary)" : "var(--text-secondary)",
+                          background: stored?.id === entry.id ? "var(--bg-hover)" : "transparent",
+                        }}
+                      >
+                        <span className="truncate">{entry.title}</span>
+                      </button>
+                      <div className="md:hidden absolute right-1 top-1/2 -translate-y-1/2">
+                        <AssetMenuButton asset={{ type: "story", id: entry.id }} label={entry.title} />
+                      </div>
+                    </div>
                   ))}
               </div>
             );

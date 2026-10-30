@@ -6,6 +6,8 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { SaveState } from "@/hooks/useAutosave";
 import { useParams } from "next/navigation";
 import {
@@ -140,6 +142,7 @@ function bezierPath(
 export default function DialoguePage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
 
   const [trees, setTrees] = useState<DialogueTree[]>([]);
   const [activeTree, setActiveTree] = useState<DialogueTree | null>(null);
@@ -711,14 +714,17 @@ export default function DialoguePage() {
               Create branching conversations for NPCs
             </p>
           </div>
-          <button
-            onClick={createTree}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium shrink-0"
-            style={{ background: "var(--accent)", color: "white" }}
-          >
-            <Plus className="w-4 h-4" />
-            New Dialogue
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <PasteButton type="dialogue" />
+            <button
+              onClick={createTree}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium shrink-0"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              <Plus className="w-4 h-4" />
+              New Dialogue
+            </button>
+          </div>
         </div>
         <ExamplesBar projectId={projectId} collections={["dialogues"]} className="mb-8" />
 
@@ -752,10 +758,12 @@ export default function DialoguePage() {
             </button>
           </div>
         ) : (
-          <div className="grid gap-3">
+          <div {...pasteTriggerProps("dialogue")} className="grid gap-3">
             {trees.map((t) => (
               <div
                 key={t.id}
+                {...assetTriggerProps({ type: "dialogue", id: t.id })}
+                tabIndex={0}
                 className="group flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-colors"
                 style={{
                   background: "var(--bg-card)",
@@ -786,18 +794,21 @@ export default function DialoguePage() {
                     {new Date(t.updatedAt).toLocaleDateString()}
                   </p>
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm(`Delete "${t.name}"?`)) deleteTree(t.id);
-                  }}
-                  className="p-2 rounded-lg md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                  style={{ color: "var(--red)" }}
-                  title="Delete dialogue"
-                  aria-label={`Delete ${t.name}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete "${t.name}"?`)) deleteTree(t.id);
+                    }}
+                    className="p-2 rounded-lg md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                    style={{ color: "var(--red)" }}
+                    title="Delete dialogue"
+                    aria-label={`Delete ${t.name}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <AssetMenuButton asset={{ type: "dialogue", id: t.id }} label={t.name} />
+                </div>
               </div>
             ))}
           </div>

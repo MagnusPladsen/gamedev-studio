@@ -15,6 +15,8 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 
 const PRESET_PALETTES: { name: string; colors: string[] }[] = [
   {
@@ -79,6 +81,7 @@ function Swatches({ colors }: { colors: string[] }) {
 export default function PalettesPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
 
   const version = useStorageVersion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,9 +232,12 @@ export default function PalettesPage() {
             <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
               Palettes
             </span>
-            <button onClick={openNewForm} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New palette" aria-label="New palette">
-              <Plus className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <PasteButton type="palette" />
+              <button onClick={openNewForm} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New palette" aria-label="New palette">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           {showNew && (
             <div className="mb-2 space-y-1.5">
@@ -259,10 +265,12 @@ export default function PalettesPage() {
               </div>
             </div>
           )}
-          <div className="space-y-0.5">
+          <div {...pasteTriggerProps("palette")} className="space-y-0.5">
             {palettes.map((p) => (
               <div
                 key={p.id}
+                {...assetTriggerProps({ type: "palette", id: p.id })}
+                tabIndex={0}
                 className="group flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer"
                 style={{
                   background: selected?.id === p.id ? "var(--bg-hover)" : "transparent",
@@ -274,15 +282,18 @@ export default function PalettesPage() {
                   <Swatches colors={p.colors} />
                   <span className="truncate">{p.name}</span>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); deletePalette(p); }}
-                  className="opacity-0 group-hover:opacity-100 max-md:opacity-100"
-                  style={{ color: "var(--red)" }}
-                  title={`Delete ${p.name}`}
-                  aria-label={`Delete ${p.name}`}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
+                <div className="flex items-center">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deletePalette(p); }}
+                    className="opacity-0 group-hover:opacity-100 max-md:opacity-100"
+                    style={{ color: "var(--red)" }}
+                    title={`Delete ${p.name}`}
+                    aria-label={`Delete ${p.name}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                  <AssetMenuButton asset={{ type: "palette", id: p.id }} label={p.name} />
+                </div>
               </div>
             ))}
           </div>
