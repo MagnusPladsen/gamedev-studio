@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useHistory } from "@/hooks/useHistory";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { useParams } from "next/navigation";
 import {
   Plus,
@@ -121,6 +123,24 @@ export default function DiagramsPage() {
   const [showNodeMenu, setShowNodeMenu] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+
+  // Undo history tracks content only (not updatedAt), and a node drag counts once, on release.
+  const content = useMemo(
+    () => (current ? { name: current.name, nodes: current.nodes, edges: current.edges } : null),
+    [current?.name, current?.nodes, current?.edges] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const [stableContent, setStableContent] = useState(content);
+  if (!dragging && stableContent !== content) setStableContent(content);
+  const history = useHistory(
+    dragging ? stableContent : content,
+    (v) => {
+      if (!v) return;
+      setCurrent((c) => (c ? { ...c, ...v, updatedAt: new Date().toISOString() } : c));
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+    },
+    current?.id
+  );
 
   const stateRef = useRef({ pan, zoom, current, dragging, panning, mode, connectFrom, selectedNodeId, selectedEdgeId });
   stateRef.current = { pan, zoom, current, dragging, panning, mode, connectFrom, selectedNodeId, selectedEdgeId };
@@ -818,6 +838,7 @@ export default function DiagramsPage() {
           >
             ← Back
           </button>
+          <UndoRedoButtons history={history} />
           <input
             className="bg-transparent text-sm font-medium outline-none px-2 py-1 rounded"
             style={{ color: "var(--text-primary)" }}

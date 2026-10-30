@@ -25,8 +25,6 @@ import {
   ChevronDown,
   Download,
   Save,
-  Undo2,
-  Redo2,
   FilePlus,
   Layers,
   Image as ImageIcon,
@@ -34,6 +32,8 @@ import {
   Maximize2,
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
+import { useUndoShortcuts } from "@/hooks/useHistory";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { storage } from "@/lib/storage";
 import { getLoadedImage, loadImage } from "@/lib/pixels";
 import { useOpenParam } from "@/hooks/useStorage";
@@ -297,6 +297,9 @@ export default function PixelArtPage() {
 
   // ── frames / layers ──
   const [frames, setFrames] = useState<FrameData[]>([]);
+  // Always-current frames for async mouse handlers (state in their closures can be a render behind).
+  const framesRef = useRef<FrameData[]>(frames);
+  framesRef.current = frames;
   const [activeFrame, setActiveFrame] = useState(0);
   const [activeLayer, setActiveLayer] = useState(0);
 
@@ -322,6 +325,15 @@ export default function PixelArtPage() {
   // ── history ──
   const historyRef = useRef<HistoryEntry[]>([]);
   const historyIdxRef = useRef(-1);
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+  const syncHistoryState = () =>
+    setHistoryState({
+      canUndo: historyIdxRef.current > 0,
+      canRedo: historyIdxRef.current < historyRef.current.length - 1,
+    });
+  // The layer being painted during one pencil/eraser stroke, and the promise that loads it.
+  const strokeRef = useRef<ImageData | null>(null);
+  const strokeStartRef = useRef<Promise<void> | null>(null);
 
   // ── drawing refs ──
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -456,6 +468,7 @@ export default function PixelArtPage() {
     historyRef.current.push(entry);
     if (historyRef.current.length > 50) historyRef.current.shift();
     historyIdxRef.current = historyRef.current.length - 1;
+    syncHistoryState();
   }
 
   function undo() {
@@ -465,6 +478,7 @@ export default function PixelArtPage() {
     setFrames(JSON.parse(JSON.stringify(e.frames)));
     setActiveFrame(e.activeFrame);
     setActiveLayer(e.activeLayer);
+    syncHistoryState();
   }
 
   function redo() {
@@ -474,14 +488,14 @@ export default function PixelArtPage() {
     setFrames(JSON.parse(JSON.stringify(e.frames)));
     setActiveFrame(e.activeFrame);
     setActiveLayer(e.activeLayer);
+    syncHistoryState();
   }
 
   // ── keyboard shortcuts ──
+  useUndoShortcuts(undo, redo);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === "y") { e.preventDefault(); redo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); saveSprite(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveSprite(); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -582,7 +596,7 @@ export default function PixelArtPage() {
 
   // ── get active layer image data ──
   async function getActiveLayerData(): Promise<ImageData> {
-    const frame = frames[activeFrame];
+    const frame = framesRef.current[activeFrame];
     if (!frame) return new ImageData(canvasW, canvasH);
     const layer = frame.layers[activeLayer];
     if (!layer) return new ImageData(canvasW, canvasH);
@@ -592,14 +606,13 @@ export default function PixelArtPage() {
   // ── set active layer image data ──
   function setActiveLayerData(imgData: ImageData) {
     const b64 = imageDataToBase64(imgData);
-    setFrames((prev) => {
-      const next = JSON.parse(JSON.stringify(prev)) as FrameData[];
-      const frame = next[activeFrame];
-      if (frame && frame.layers[activeLayer]) {
-        frame.layers[activeLayer].pixels = b64;
-      }
-      return next;
-    });
+    const next = framesRef.current.map((f, fi) =>
+      fi === activeFrame && f.layers[activeLayer]
+        ? { ...f, layers: f.layers.map((l, li) => (li === activeLayer ? { ...l, pixels: b64 } : l)) }
+        : f
+    );
+    framesRef.current = next;
+    setFrames(next);
   }
 
   // ── pixel coords from mouse ──
@@ -633,25 +646,23 @@ export default function PixelArtPage() {
     lastPixelRef.current = p;
 
     if (tool === "pencil" || tool === "eraser") {
-      const data = await getActiveLayerData();
-      const [r, g, b] = tool === "eraser" ? [0, 0, 0] : hexToRgb(color);
-      const a = tool === "eraser" ? 0 : 255;
-      setPixel(data, p.x, p.y, r, g, b, a);
-      setActiveLayerData(data);
+      strokeRef.current = null;
+      const start = (async () => {
+        const data = await getActiveLayerData();
+        const [r, g, b] = tool === "eraser" ? [0, 0, 0] : hexToRgb(color);
+        const a = tool === "eraser" ? 0 : 255;
+        setPixel(data, p.x, p.y, r, g, b, a);
+        strokeRef.current = data;
+        setActiveLayerData(data);
+      })();
+      strokeStartRef.current = start;
+      await start;
     } else if (tool === "fill") {
       const data = await getActiveLayerData();
       const [r, g, b] = hexToRgb(color);
       floodFill(data, p.x, p.y, r, g, b, 255);
       setActiveLayerData(data);
-      pushHistory(
-        frames.map((f, fi) =>
-          fi === activeFrame
-            ? { ...f, layers: f.layers.map((l, li) => (li === activeLayer ? { ...l, pixels: imageDataToBase64(data) } : l)) }
-            : f
-        ),
-        activeFrame,
-        activeLayer
-      );
+      pushHistory(framesRef.current, activeFrame, activeLayer);
       isDrawingRef.current = false;
     } else if (tool === "picker") {
       const data = await getActiveLayerData();
@@ -668,7 +679,8 @@ export default function PixelArtPage() {
     if (!p) return;
 
     if (tool === "pencil" || tool === "eraser") {
-      const data = await getActiveLayerData();
+      const data = strokeRef.current;
+      if (!data) return; // layer still loading; the next move draws a line from the last point
       const [r, g, b] = tool === "eraser" ? [0, 0, 0] : hexToRgb(color);
       const a = tool === "eraser" ? 0 : 255;
       const last = lastPixelRef.current || p;
@@ -717,7 +729,11 @@ export default function PixelArtPage() {
         overlayRef.current = null;
       }
     }
-    pushHistory(frames, activeFrame, activeLayer);
+    // A quick click can end before the stroke's layer finished loading; wait so the step includes it.
+    if (strokeStartRef.current) await strokeStartRef.current;
+    strokeStartRef.current = null;
+    strokeRef.current = null;
+    pushHistory(framesRef.current, activeFrame, activeLayer);
   }
 
   // ── zoom ──
@@ -1002,8 +1018,9 @@ export default function PixelArtPage() {
           </button>
         </div>
         <div className="flex items-center gap-1.5">
-          <button onClick={undo} style={btnStyle()} title="Undo (Ctrl+Z)"><Undo2 className="w-4 h-4" /></button>
-          <button onClick={redo} style={btnStyle()} title="Redo (Ctrl+Y)"><Redo2 className="w-4 h-4" /></button>
+          <UndoRedoButtons
+            history={{ undo, redo, ...historyState }}
+          />
           <div style={{ width: 1, height: 20, background: "var(--border)", margin: "0 4px" }} />
           <button
             onClick={saveSprite}

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useHistory } from "@/hooks/useHistory";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { useParams } from "next/navigation";
 import {
   Plus,
@@ -217,6 +219,24 @@ export default function DialoguePage() {
       flashTimer.current = window.setTimeout(() => setSavedFlash(false), 1500);
     },
     [projectId]
+  );
+
+  // Undo history tracks content only; a node drag counts once, when released.
+  const content = useMemo(
+    () => (activeTree ? { name: activeTree.name, nodes: activeTree.nodes } : null),
+    [activeTree?.name, activeTree?.nodes] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const [stableContent, setStableContent] = useState(content);
+  if (!draggingNode && stableContent !== content) setStableContent(content);
+  const history = useHistory(
+    draggingNode ? stableContent : content,
+    (v) => {
+      if (!v || !activeTree) return;
+      saveTree({ ...activeTree, ...v });
+      setSelectedNode(null);
+      setEditingNode(null);
+    },
+    activeTree?.id
   );
 
   function createTree() {
@@ -824,6 +844,7 @@ export default function DialoguePage() {
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
+          <UndoRedoButtons history={history} />
           <input
             className="bg-transparent text-sm font-medium outline-none w-48"
             style={{ color: "var(--text-primary)" }}

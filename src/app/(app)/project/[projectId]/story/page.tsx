@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useHistory } from "@/hooks/useHistory";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { useParams, useRouter } from "next/navigation";
 import {
   Plus,
@@ -174,6 +176,17 @@ export default function StoryPage() {
   useOpenParam((id) => {
     if (storage.getById("stories", id, projectId)) selectEntry(id);
   });
+
+  // Entry-level undo (title, type, tags, links, saved content). Typing in the editor uses the textarea's own undo.
+  const history = useHistory(
+    stored,
+    (v) => {
+      if (!v) return;
+      setDraft(null);
+      storage.save("stories", { ...v, updatedAt: new Date().toISOString() }, projectId);
+    },
+    stored?.id
+  );
 
   const grouped = useMemo(() => {
     const groups: Record<string, StoryEntry[]> = {};
@@ -615,6 +628,7 @@ export default function StoryPage() {
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: "var(--border)" }}>
             <div className="flex items-center gap-2 min-w-0">
+              <UndoRedoButtons history={history} />
               {(() => {
                 const meta = getTypeMeta(selected.type);
                 return (
