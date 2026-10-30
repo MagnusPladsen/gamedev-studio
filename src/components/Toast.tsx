@@ -47,7 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }): React.JSX.
       <div
         role="status"
         aria-live="polite"
-        className="pointer-events-none fixed bottom-4 left-1/2 z-[210] -translate-x-1/2 max-md:bottom-[calc(16px+env(safe-area-inset-bottom))]"
+        className="pointer-events-none fixed bottom-4 left-1/2 z-[210] w-max max-w-[calc(100vw-32px)] -translate-x-1/2 max-md:bottom-[calc(16px+env(safe-area-inset-bottom))]"
       >
         {toast && (
           <div

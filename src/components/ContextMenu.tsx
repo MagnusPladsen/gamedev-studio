@@ -52,15 +52,18 @@ interface MenuPanelProps {
   label: string;
   place: (size: Size) => MenuPlacement;
   isDrillIn: boolean;
+  autoFocus: boolean;
   onCloseAll: () => void;
   onExit?: () => void;
 }
 
-function MenuPanel({ entries, label, place, isDrillIn, onCloseAll, onExit }: MenuPanelProps): ReactNode {
+function MenuPanel({ entries, label, place, isDrillIn, autoFocus, onCloseAll, onExit }: MenuPanelProps): ReactNode {
   const panelRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [drillKey, setDrillKey] = useState<string | null>(null);
+  const [isOpenedByKeyboard, setIsOpenedByKeyboard] = useState(false);
+  const hasMounted = useRef(false);
 
   const drilled = drillKey ? entries.find((entry) => entry.key === drillKey) : undefined;
   const drilledItems = drilled?.kind === "item" ? (drilled.submenu ?? []) : [];
@@ -80,14 +83,21 @@ function MenuPanel({ entries, label, place, isDrillIn, onCloseAll, onExit }: Men
   }, [place, visible.length]);
 
   useEffect(() => {
+    const isFirstRun = !hasMounted.current;
+    hasMounted.current = true;
+    if (isFirstRun && !autoFocus) return;
     focusIndex(nextEnabledIndex(disabledFlags, -1, "ArrowDown"));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refocus only when the visible list changes
-  }, [drillKey, focusIndex]);
+  }, [drillKey, focusIndex, autoFocus]);
 
-  const activate = (entry: MenuItem): void => {
+  const activate = (entry: MenuItem, isKeyboard = false): void => {
     if (entry.disabled) return;
     if (entry.key === BACK_KEY) return setDrillKey(null);
-    if (entry.submenu) return isDrillIn ? setDrillKey(entry.key) : setOpenKey(entry.key);
+    if (entry.submenu) {
+      if (isDrillIn) return setDrillKey(entry.key);
+      setIsOpenedByKeyboard(isKeyboard);
+      return setOpenKey(entry.key);
+    }
     onCloseAll();
     entry.onSelect?.();
   };
@@ -103,11 +113,11 @@ function MenuPanel({ entries, label, place, isDrillIn, onCloseAll, onExit }: Men
     if (key === "Enter" || key === " ") {
       event.preventDefault();
       const entry = visible[current];
-      return entry?.kind === "item" ? activate(entry) : undefined;
+      return entry?.kind === "item" ? activate(entry, true) : undefined;
     }
     if (key === "ArrowRight") {
       const entry = visible[current];
-      if (entry?.kind === "item" && entry.submenu) activate(entry);
+      if (entry?.kind === "item" && entry.submenu) activate(entry, true);
       return;
     }
     if (key === "ArrowLeft" || key === "Escape") {
@@ -144,7 +154,10 @@ function MenuPanel({ entries, label, place, isDrillIn, onCloseAll, onExit }: Men
               aria-expanded={entry.submenu && !isDrillIn ? openKey === entry.key : undefined}
               onClick={() => activate(entry)}
               onPointerEnter={(event) => {
-                if (event.pointerType === "mouse") setOpenKey(entry.submenu && !entry.disabled ? entry.key : null);
+                if (event.pointerType !== "mouse") return;
+                focusIndex(index);
+                setIsOpenedByKeyboard(false);
+                setOpenKey(entry.submenu && !entry.disabled ? entry.key : null);
               }}
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-hover)] focus:bg-[var(--bg-hover)] focus-visible:outline-none max-md:py-2.5"
               style={{ color: entry.danger ? "var(--red)" : "var(--text-primary)", opacity: entry.disabled ? 0.5 : 1 }}
@@ -163,6 +176,7 @@ function MenuPanel({ entries, label, place, isDrillIn, onCloseAll, onExit }: Men
               <SubmenuPanel
                 entries={entry.submenu}
                 label={entry.label}
+                autoFocus={isOpenedByKeyboard}
                 getAnchor={() => itemRefs.current[index] ?? null}
                 onCloseAll={onCloseAll}
                 onExit={() => {
@@ -182,11 +196,12 @@ interface SubmenuPanelProps {
   entries: ContextMenuEntry[];
   label: string;
   getAnchor: () => HTMLElement | null;
+  autoFocus: boolean;
   onCloseAll: () => void;
   onExit: () => void;
 }
 
-function SubmenuPanel({ entries, label, getAnchor, onCloseAll, onExit }: SubmenuPanelProps): ReactNode {
+function SubmenuPanel({ entries, label, getAnchor, autoFocus, onCloseAll, onExit }: SubmenuPanelProps): ReactNode {
   const place = useCallback(
     (size: Size): MenuPlacement => {
       const rect = getAnchor()?.getBoundingClientRect() ?? { left: MENU_MARGIN, right: MENU_MARGIN, top: MENU_MARGIN };
@@ -194,7 +209,7 @@ function SubmenuPanel({ entries, label, getAnchor, onCloseAll, onExit }: Submenu
     },
     [getAnchor],
   );
-  return <MenuPanel entries={entries} label={label} place={place} isDrillIn={false} onCloseAll={onCloseAll} onExit={onExit} />;
+  return <MenuPanel entries={entries} label={label} place={place} isDrillIn={false} autoFocus={autoFocus} onCloseAll={onCloseAll} onExit={onExit} />;
 }
 
 interface ContextMenuProps {
@@ -233,7 +248,7 @@ export function ContextMenu({ anchor, entries, label, onClose }: ContextMenuProp
   if (!isMounted) return null;
   return createPortal(
     <div ref={rootRef} className="contents">
-      <MenuPanel entries={entries} label={label} place={place} isDrillIn={isDrillIn} onCloseAll={onClose} />
+      <MenuPanel entries={entries} label={label} place={place} isDrillIn={isDrillIn} autoFocus onCloseAll={onClose} />
     </div>,
     document.body,
   );
