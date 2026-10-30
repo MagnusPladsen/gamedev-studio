@@ -21,6 +21,7 @@ export const ASSET_KINDS: Record<AssetType, AssetKind> = {
   spritesheet: { type: "spritesheet", collection: "spritesheets", label: "Sprite sheet", path: "sprites", color: "#38bdf8" },
   note: { type: "note", collection: "notes", label: "Note", path: "notebook", color: "#a3e635" },
   issue: { type: "issue", collection: "issues", label: "Issue", path: "board", color: "#e879f9" },
+  model: { type: "model", collection: "models", label: "Voxel model", path: "voxels", color: "#d4a373" },
 };
 
 export const ASSET_TYPES = Object.keys(ASSET_KINDS) as AssetType[];
@@ -43,6 +44,7 @@ type AnyAsset = {
   createdAt?: string;
   frames?: { pixels?: string }[];
   colors?: string[];
+  thumbnail?: string;
 };
 
 export function summarize(type: AssetType, raw: unknown): AssetSummary {
@@ -51,7 +53,7 @@ export function summarize(type: AssetType, raw: unknown): AssetSummary {
     type,
     id: a.id,
     name: type === "issue" && a.key ? `${a.key} ${a.title ?? ""}`.trim() : a.name || a.title || "Untitled",
-    thumbnail: type === "sprite" ? a.frames?.[0]?.pixels : undefined,
+    thumbnail: type === "sprite" ? a.frames?.[0]?.pixels : type === "model" ? a.thumbnail : undefined,
     excerpt: (a.content ?? a.description) ? (a.content ?? a.description)!.replace(/[#*_>`\[\]]/g, "").slice(0, 160) : undefined,
     updatedAt: a.updatedAt ?? a.createdAt,
   };

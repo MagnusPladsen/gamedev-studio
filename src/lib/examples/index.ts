@@ -119,6 +119,7 @@ const COLLECTION_OF: Record<AssetRef["type"], ProjectCollection> = {
   spritesheet: "spritesheets",
   note: "notes",
   issue: "issues",
+  model: "models",
 };
 
 function assetExists(projectId: string, ref: AssetRef) {

@@ -202,7 +202,7 @@ export interface SpriteSheet {
   createdAt: string;
 }
 
-export type AssetType = "sprite" | "sound" | "music" | "diagram" | "story" | "tilemap" | "dialogue" | "palette" | "spritesheet" | "note" | "issue";
+export type AssetType = "sprite" | "sound" | "music" | "diagram" | "story" | "tilemap" | "dialogue" | "palette" | "spritesheet" | "note" | "issue" | "model";
 
 /** "todo" / "doing" / "done" decides what counts as finished, whatever the column is called. */
 export type ColumnCategory = "todo" | "doing" | "done";
@@ -257,6 +257,21 @@ export interface Issue {
   resolvedAt?: string; // set while in a "done" column
   archived?: boolean; // finished and off the board, still searchable and linkable
   tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VoxelModel {
+  id: string;
+  projectId: string;
+  name: string;
+  size: [number, number, number];
+  paletteId?: string;
+  colors: string[];
+  voxels: string;
+  thumbnail?: string;
+  tags: string[];
+  example?: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -13,6 +13,7 @@ import type {
   Note,
   Board,
   Issue,
+  VoxelModel,
 } from "@/types";
 
 export type StorableTypes = {
@@ -30,6 +31,7 @@ export type StorableTypes = {
   notes: Note;
   boards: Board;
   issues: Issue;
+  models: VoxelModel;
 };
 
 export type CollectionName = keyof StorableTypes;
@@ -48,6 +50,7 @@ export const PROJECT_COLLECTIONS: ProjectCollection[] = [
   "notes",
   "boards",
   "issues",
+  "models",
   "links",
 ];
 

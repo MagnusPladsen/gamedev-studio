@@ -19,6 +19,7 @@ import {
   Download,
   NotebookPen,
   SquareKanban,
+  Box,
 } from "lucide-react";
 import { storage, PROJECT_COLLECTIONS } from "@/lib/storage";
 import { isExample } from "@/lib/examples";
@@ -40,6 +41,7 @@ const ICONS: Record<AssetType, React.ComponentType<{ className?: string }>> = {
   spritesheet: Package,
   note: NotebookPen,
   issue: SquareKanban,
+  model: Box,
 };
 
 const ASSET_COLLECTIONS = PROJECT_COLLECTIONS.filter((c) => c !== "links");
@@ -56,6 +58,7 @@ const DESCRIPTIONS: Record<AssetType, string> = {
   spritesheet: "Pack sprites for your engine",
   note: "Ideas, to-dos and dev notes",
   issue: "Sprints, tasks and bugs",
+  model: "Chunky 3D props and characters",
 };
 
 export default function AssetsPage() {
