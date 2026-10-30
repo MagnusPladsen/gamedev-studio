@@ -65,29 +65,30 @@ export default function LandingPage() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm" style={{ background: "var(--accent)" }}>
               GD
             </div>
-            <span className="font-semibold text-lg" style={{ color: "var(--text-primary)" }}>
+            <span className="font-semibold text-base sm:text-lg whitespace-nowrap" style={{ color: "var(--text-primary)" }}>
               GameDev Studio
             </span>
-            <BetaBadge />
+            <BetaBadge className="max-[380px]:hidden" />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             <a
               href="https://github.com/magnuspladsen/gamedev-studio"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 rounded-lg transition-colors hover:opacity-80"
+              className="p-2 rounded-lg transition-colors hover:opacity-80 hidden sm:block"
               style={{ color: "var(--text-secondary)" }}
+              aria-label="GitHub repository"
             >
               <GithubIcon className="w-5 h-5" />
             </a>
             {supabaseEnabled && (
-              <Link href="/projects?signin=1" className="px-3 py-2 rounded-lg text-sm transition-colors hover:opacity-80" style={{ color: "var(--text-secondary)" }}>
+              <Link href="/projects?signin=1" className="px-2 sm:px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors hover:opacity-80" style={{ color: "var(--text-secondary)" }}>
                 Sign in
               </Link>
             )}
             <Link
               href="/projects"
-              className="px-4 py-2 rounded-lg font-medium text-sm transition-all hover:opacity-90"
+              className="px-3 sm:px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-all hover:opacity-90"
               style={{ background: "var(--accent)", color: "white" }}
             >
               Open Studio
@@ -113,7 +114,7 @@ export default function LandingPage() {
             Public beta · Free &amp; open source · No watermarks
           </div>
           <h1
-            className="text-4xl sm:text-6xl font-bold leading-tight tracking-tight mb-6 animate-fade-in stagger-1 opacity-0"
+            className="text-4xl sm:text-6xl font-bold leading-tight tracking-tight mb-6 text-balance animate-fade-in stagger-1 opacity-0"
             style={{ color: "var(--text-primary)" }}
           >
             Everything you need to
