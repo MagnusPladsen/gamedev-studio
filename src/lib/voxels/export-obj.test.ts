@@ -24,6 +24,13 @@ describe("toObj", () => {
     expect(lines(obj, "usemtl ")).toEqual(["usemtl c1", "usemtl c3"]);
   });
 
+  it("writes Kd as linear values, which is how Blender reads it", () => {
+    const grid = createGrid([2, 2, 2]);
+    grid.data[voxelIndex(grid.size, 0, 0, 0)] = 1;
+    const mesh = buildMesh(greedyQuads(grid), ["#808080"], grid.size);
+    expect(lines(toObj(mesh, ["#808080"], "model").mtl, "Kd ")).toEqual(["Kd 0.215861 0.215861 0.215861"]);
+  });
+
   it("is valid for an empty mesh", () => {
     const mesh = buildMesh([], [], [4, 4, 4]);
     const { obj, mtl } = toObj(mesh, [], "empty");

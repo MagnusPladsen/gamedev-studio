@@ -4,9 +4,11 @@ import { useSyncExternalStore } from "react";
 import { Box, X } from "lucide-react";
 
 const DISMISSED_KEY = "gds-ui:blender-card-dismissed";
-const BLENDER_URL = "https://www.blender.org/download/";
+export const BLENDER_URL = "https://www.blender.org/download/";
 const MAGICAVOXEL_URL = "https://ephtracy.github.io/";
 const BLOCKBENCH_URL = "https://www.blockbench.net";
+
+export const BLENDER_MENU_DESCRIPTION = "Export .glb, then File → Import → glTF 2.0 in Blender";
 
 const listeners = new Set<() => void>();
 let isDismissedInMemory = false;

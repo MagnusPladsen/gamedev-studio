@@ -14,6 +14,7 @@ import { ModelList } from "@/components/voxels/ModelList";
 import { SpriteImportDialog, type SpriteVoxels } from "@/components/voxels/SpriteImportDialog";
 import type { ViewPreset, VoxelTool } from "@/components/voxels/types";
 import { useVoxelDocument, DEFAULT_MODEL_NAME, type VoxelDoc } from "@/components/voxels/useVoxelDocument";
+import { useVoxelExports } from "@/components/voxels/useVoxelExports";
 import { useVoxelStrokes } from "@/components/voxels/useVoxelStrokes";
 import { VoxelEmptyState } from "@/components/voxels/VoxelEmptyState";
 import { TOOL_META, VoxelToolbar } from "@/components/voxels/VoxelToolbar";
@@ -121,6 +122,7 @@ export default function VoxelsPage(): React.JSX.Element {
   const [isModelsPanelOpen, setIsModelsPanelOpen] = useState(false);
   const viewportApiRef = useRef<VoxelViewportApi | null>(null);
 
+  const exportItems = useVoxelExports(doc, viewportApiRef);
   const grid = doc?.grid ?? PLACEHOLDER_GRID;
   const colors = doc?.colors ?? FALLBACK_COLORS;
   const activeColorValue = Math.max(1, Math.min(colorValue, colors.length));
@@ -253,7 +255,7 @@ export default function VoxelsPage(): React.JSX.Element {
           <UndoRedoButtons history={editor.history} />
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
           {doc && <SaveIndicator state={editor.saveState} />}
-          <ExportMenu disabled={!doc} items={[]} />
+<ExportMenu disabled={!doc} items={exportItems} />
         </div>
       </div>
 

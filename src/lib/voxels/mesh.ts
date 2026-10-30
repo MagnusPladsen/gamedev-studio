@@ -107,7 +107,7 @@ export function greedyQuads(grid: VoxelGrid): Quad[] {
   return quads;
 }
 
-function srgbToLinear(channel: number): number {
+export function srgbToLinear(channel: number): number {
   const c = channel / 255;
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 }

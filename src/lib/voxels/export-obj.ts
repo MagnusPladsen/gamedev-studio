@@ -1,5 +1,5 @@
 import { hexToRgb } from "./colors";
-import type { MeshArrays } from "./mesh";
+import { srgbToLinear, type MeshArrays } from "./mesh";
 
 function formatNumber(value: number): string {
   return String(Number(value.toFixed(6)));
@@ -31,7 +31,7 @@ export function toObj(mesh: MeshArrays, colors: string[], name: string): { obj: 
   ];
   const mtl: string[] = [];
   for (const group of mesh.groups) {
-    const [r, g, b] = hexToRgb(colors[group.value - 1] ?? "#ffffff").map((channel) => formatNumber(channel / 255));
+    const [r, g, b] = hexToRgb(colors[group.value - 1] ?? "#ffffff").map((channel) => formatNumber(srgbToLinear(channel)));
     mtl.push(`newmtl c${group.value}`, `Kd ${r} ${g} ${b}`, "");
     obj.push(`usemtl c${group.value}`, ...faceLines(mesh, group));
   }
