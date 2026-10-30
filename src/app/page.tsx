@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BetaBadge } from "@/components/BetaBadge";
 import { supabaseEnabled } from "@/lib/supabase";
 import {
+  Box,
   Paintbrush,
   Music,
   Volume2,
@@ -45,6 +46,7 @@ function ToolCard({ icon: Icon, name, description }: { icon: React.ComponentType
 
 const tools = [
   { icon: Paintbrush, name: "Pixel Art Editor", description: "Draw sprites with layers, frames, and onion skinning. Create animations and export sprite sheets." },
+  { icon: Box, name: "Voxel Models", description: "Build chunky 3D props and characters with your palettes. Export to Blender, Godot and Unity." },
   { icon: Music, name: "Music Composer", description: "Pattern-based music creation with multiple channels and instruments. Think BeepBox meets FL Studio." },
   { icon: Volume2, name: "SFX Generator", description: "Generate retro and modern sound effects with presets for explosions, lasers, pickups, and more." },
   { icon: Grid3X3, name: "Tilemap Editor", description: "Paint game levels using your own sprites. Multiple layers, auto-tiling, and collision maps." },
