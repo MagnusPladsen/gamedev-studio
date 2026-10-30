@@ -64,4 +64,29 @@ describe("modelExamples", () => {
       expect(dark / solid).toBeLessThan(0.05);
     }
   });
+
+  it("shows both slime eyes on the +Z front face", () => {
+    const slime = items[3];
+    const data = decodeVoxels(slime.voxels, 16 ** 3);
+    const eye = slime.colors.indexOf("#1d1a2b") + 1;
+    expect(eye).toBeGreaterThan(0);
+    const frontmost = (x: number, y: number) => {
+      for (let z = 15; z >= 0; z--) {
+        const value = data[voxelIndex([16, 16, 16], x, y, z)];
+        if (value !== 0) return value;
+      }
+      return 0;
+    };
+    for (const x of [5, 10]) {
+      for (const y of [3, 4]) expect(frontmost(x, y)).toBe(eye);
+    }
+  });
+
+  it("gives the slime a darker base that shows as a ring at y=0", () => {
+    const slime = items[3];
+    const data = decodeVoxels(slime.voxels, 16 ** 3);
+    const base = slime.colors.indexOf("#5e3a9e") + 1;
+    expect(data[voxelIndex([16, 16, 16], 2, 0, 5)]).toBe(base);
+    expect(data[voxelIndex([16, 16, 16], 2, 1, 5)]).not.toBe(base);
+  });
 });

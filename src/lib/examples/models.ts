@@ -44,12 +44,12 @@ const CHEST_BOXES: Box[] = [
 ];
 
 const SLIME_BOXES: Box[] = [
-  ["p", 3, 0, 5, 12, 0, 10], ["p", 5, 0, 3, 10, 0, 12], // darker base
+  ["p", 2, 0, 4, 13, 0, 11], ["p", 4, 0, 2, 11, 0, 13], // darker base, as wide as the body so it shows as a ring
   ["P", 2, 1, 4, 13, 4, 11], ["P", 4, 1, 2, 11, 4, 13],
   ["P", 3, 5, 4, 12, 5, 11], ["P", 4, 5, 3, 11, 5, 12],
   ["P", 4, 6, 4, 11, 6, 11], ["P", 5, 7, 5, 10, 7, 10], ["P", 6, 8, 6, 9, 8, 9],
   ["W", 6, 7, 6, 7, 7, 7], ["W", 4, 6, 11, 4, 6, 11], // highlights
-  ["K", 5, 4, 11, 5, 5, 11], ["K", 10, 4, 11, 10, 5, 11], // eyes
+  ["K", 5, 3, 13, 5, 4, 13], ["K", 10, 3, 13, 10, 4, 13], // eyes, on the outermost front face
 ];
 
 // Tree canopy and trunk as 8x8 slices (row per Z, front last), centred in the grid.
