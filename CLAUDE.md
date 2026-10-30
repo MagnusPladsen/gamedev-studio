@@ -9,6 +9,7 @@ owner through Vercel from `main`. Read `HANDOVER.md` for current status, open ta
 
 - `npm run dev` — dev server on http://localhost:3000
 - `npm run build` — production build (must pass before pushing; Vercel runs the same)
+- `npm test` — vitest unit tests
 - `npx tsc --noEmit -p .` — typecheck
 - `npm run lint` — ESLint (a few older `react-hooks/set-state-in-effect` findings remain; don't add new ones)
 
@@ -55,6 +56,6 @@ owner through Vercel from `main`. Read `HANDOVER.md` for current status, open ta
 
 ## Testing
 
-There is no test suite yet. Changes were verified by building, running `next start`, and driving the app with
+vitest unit tests cover the voxel lib and the examples (`npm test`). UI changes are still verified by building, running `next start`, and driving the app with
 Playwright (desktop 1440×900 and phone 390×844): create a project with examples, open every tool, check for page
 errors and horizontal overflow on phones, and exercise the feature changed. Do the same before pushing UI work.
