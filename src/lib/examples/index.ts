@@ -8,11 +8,12 @@ import { levelExamples } from "./levels";
 import { planningExamples } from "./planning";
 import { writingExamples } from "./writing";
 import { boardExamples } from "./board";
+import { modelExamples } from "./models";
 
 export type { ExampleModule, ExampleContext } from "./types";
 export { EXAMPLE_SLUGS } from "./types";
 
-const MODULES: ExampleModule[] = [...artExamples, ...audioExamples, ...levelExamples, ...planningExamples, ...writingExamples, ...boardExamples];
+const MODULES: ExampleModule[] = [...artExamples, ...audioExamples, ...levelExamples, ...planningExamples, ...writingExamples, ...boardExamples, ...modelExamples];
 
 export const exampleId = (projectId: string, slug: string) => `${projectId}--ex--${slug}`;
 
@@ -25,6 +26,11 @@ const EXAMPLE_LINKS: [AssetRef["type"], string, AssetRef["type"], string][] = [
   ["story", "elder", "dialogue", "elder-quest"],
   ["story", "quest-sword", "dialogue", "elder-quest"],
   ["story", "forest", "sprite", "slime"],
+  ["model", "hero-3d", "sprite", "hero"],
+  ["model", "coin-3d", "sprite", "coin"],
+  ["model", "chest-3d", "sprite", "chest"],
+  ["model", "slime-3d", "sprite", "slime"],
+  ["model", "tree-3d", "tilemap", "meadow"],
   ["diagram", "player-states", "sprite", "hero"],
   ["diagram", "enemy-ai", "sprite", "slime"],
   ["dialogue", "merchant", "sound", "coin"],

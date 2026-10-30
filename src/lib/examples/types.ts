@@ -25,6 +25,7 @@ export const EXAMPLE_SLUGS = {
   music: ["melody", "chill-loop", "title-theme", "boss-battle"],
   tilemaps: ["meadow"],
   spritesheets: ["characters"],
+  models: ["hero-3d", "coin-3d", "chest-3d", "slime-3d", "tree-3d"],
   palettes: ["meadow-palette", "dungeon-palette"],
   diagrams: ["player-states", "enemy-ai", "screen-flow"],
   dialogues: ["merchant", "elder-quest", "gate-guard"],
