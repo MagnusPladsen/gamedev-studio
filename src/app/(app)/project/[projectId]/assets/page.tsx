@@ -126,8 +126,11 @@ export default function AssetsPage() {
             <Link
               key={t}
               href={`/project/${projectId}/${kind.path}`}
-              className="group flex items-start gap-3 p-4 rounded-xl border text-left transition-colors hover:bg-[var(--bg-hover)] hover:border-[var(--border-hover)]"
-              style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+              className="group flex items-start gap-3 p-4 rounded-xl border text-left transition-colors hover:brightness-125"
+              style={{
+                background: `linear-gradient(135deg, color-mix(in srgb, ${kind.color} 13%, var(--bg-card)), color-mix(in srgb, ${kind.color} 4%, var(--bg-card)))`,
+                borderColor: `color-mix(in srgb, ${kind.color} 22%, var(--border))`,
+              }}
             >
               <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${kind.color}22`, color: kind.color }}>
                 <Icon className="w-5 h-5" />

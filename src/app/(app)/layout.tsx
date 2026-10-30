@@ -23,19 +23,36 @@ import { useState, Suspense } from "react";
 import { SyncProvider, useSync } from "@/components/SyncProvider";
 import { AccountPanel } from "@/components/AccountPanel";
 import { BetaBadge } from "@/components/BetaBadge";
+import { ASSET_KINDS } from "@/lib/assets";
+
+/** Tints the shared surface colours with a tool's colour, so every editor inside picks it up. */
+function toolTheme(color?: string): React.CSSProperties {
+  if (!color) return {};
+  const mix = (pct: number, base: string) => `color-mix(in srgb, ${color} ${pct}%, ${base})`;
+  return {
+    "--tool-color": color,
+    "--bg-primary": mix(4, "#0a0a0f"),
+    "--bg-secondary": mix(6, "#12121a"),
+    "--bg-card": mix(7, "#16161f"),
+    "--bg-hover": mix(11, "#1e1e2a"),
+    "--border": mix(14, "#2a2a3a"),
+    "--border-hover": mix(22, "#3a3a4f"),
+    background: "var(--bg-primary)",
+  } as React.CSSProperties;
+}
 
 const toolNav = [
   { icon: LayoutDashboard, name: "Assets", path: "assets", color: "var(--text-secondary)" },
-  { icon: Paintbrush, name: "Pixel Art", path: "pixel-art", color: "var(--accent)" },
-  { icon: Music, name: "Music", path: "music", color: "var(--green)" },
-  { icon: Volume2, name: "SFX", path: "sfx", color: "var(--yellow)" },
-  { icon: Grid3X3, name: "Tilemap", path: "tilemap", color: "var(--blue)" },
-  { icon: GitBranch, name: "Diagrams", path: "diagrams", color: "var(--pink)" },
-  { icon: BookOpen, name: "Story", path: "story", color: "var(--orange)" },
-  { icon: NotebookPen, name: "Notebook", path: "notebook", color: "#a3e635" },
-  { icon: MessageSquare, name: "Dialogue", path: "dialogue", color: "var(--red)" },
-  { icon: Palette, name: "Palettes", path: "palettes", color: "var(--green)" },
-  { icon: Package, name: "Sprites", path: "sprites", color: "var(--blue)" },
+  { icon: Paintbrush, name: "Pixel Art", path: "pixel-art", color: ASSET_KINDS.sprite.color },
+  { icon: Music, name: "Music", path: "music", color: ASSET_KINDS.music.color },
+  { icon: Volume2, name: "SFX", path: "sfx", color: ASSET_KINDS.sound.color },
+  { icon: Grid3X3, name: "Tilemap", path: "tilemap", color: ASSET_KINDS.tilemap.color },
+  { icon: GitBranch, name: "Diagrams", path: "diagrams", color: ASSET_KINDS.diagram.color },
+  { icon: BookOpen, name: "Story", path: "story", color: ASSET_KINDS.story.color },
+  { icon: NotebookPen, name: "Notebook", path: "notebook", color: ASSET_KINDS.note.color },
+  { icon: MessageSquare, name: "Dialogue", path: "dialogue", color: ASSET_KINDS.dialogue.color },
+  { icon: Palette, name: "Palettes", path: "palettes", color: ASSET_KINDS.palette.color },
+  { icon: Package, name: "Sprites", path: "sprites", color: ASSET_KINDS.spritesheet.color },
 ];
 
 function AppSidebar({ children }: { children: React.ReactNode }) {
@@ -46,6 +63,7 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
   const projectMatch = pathname.match(/\/project\/([^/]+)/);
   const projectId = projectMatch?.[1];
   const isProjectView = !!projectId;
+  const activeTool = toolNav.find((t) => t.path !== "assets" && pathname.startsWith(`/project/${projectId}/${t.path}`));
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-primary)" }}>
@@ -118,7 +136,7 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
                       className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
                       style={{
                         color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                        background: isActive ? "var(--bg-hover)" : "transparent",
+                        background: isActive ? `color-mix(in srgb, ${tool.color} 14%, transparent)` : "transparent",
                       }}
                       onClick={() => setSidebarOpen(false)}
                     >
@@ -146,7 +164,7 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto" style={toolTheme(activeTool?.color)}>
         {ready ? (
           <div key={generation} className="h-full">
             {children}
