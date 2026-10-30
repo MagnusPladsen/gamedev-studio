@@ -18,7 +18,7 @@ export const FALLBACK_COLORS: string[] = [
   "#f6c445",
 ];
 
-function parseHex(hex: string): [number, number, number] {
+export function hexToRgb(hex: string): [number, number, number] {
   const value = parseInt(hex.slice(1, 7), 16);
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
 }
@@ -28,11 +28,11 @@ function squaredDistance(a: [number, number, number], b: [number, number, number
 }
 
 export function nearestColorValue(colors: string[], hex: string): number {
-  const target = parseHex(hex);
+  const target = hexToRgb(hex);
   let bestValue = 1;
   let bestDistance = Infinity;
   colors.forEach((color, index) => {
-    const distance = squaredDistance(parseHex(color), target);
+    const distance = squaredDistance(hexToRgb(color), target);
     if (distance < bestDistance) {
       bestDistance = distance;
       bestValue = index + 1;
