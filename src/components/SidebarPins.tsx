@@ -27,7 +27,7 @@ export function SidebarPins({ projectId, onNavigate }: { projectId: string; onNa
               <Link
                 href={assetHref(projectId, asset.type, asset.id)}
                 onClick={onNavigate}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors max-md:pr-10"
                 style={{ color: "var(--text-secondary)" }}
                 {...assetTriggerProps(asset)}
               >

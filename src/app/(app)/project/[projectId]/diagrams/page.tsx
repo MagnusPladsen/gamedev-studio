@@ -218,6 +218,7 @@ export default function DiagramsPage() {
 
     ctx.fillStyle = "#0a0a0f";
     ctx.fillRect(0, 0, rect.width, rect.height);
+    const deletedBadgeColor = getComputedStyle(canvas).getPropertyValue("--text-muted").trim() || "#555570";
 
     // Grid
     ctx.save();
@@ -415,11 +416,11 @@ export default function DiagramsPage() {
       // Linked-asset badge
       const linked = nodeAsset(node);
       if (linked) {
-        const isDeleted = !getAsset(projectId, linked.type, linked.id);
+        const isDeleted = !storage.getById(ASSET_KINDS[linked.type].collection, linked.id, projectId);
         const bx = node.x + node.width - 2;
         const by = node.y + 2;
         ctx.fillStyle = isDeleted
-          ? getComputedStyle(canvas).getPropertyValue("--text-muted").trim() || "#555570"
+          ? deletedBadgeColor
           : ASSET_KINDS[linked.type]?.color ?? "#7c5cfc";
         ctx.beginPath();
         ctx.arc(bx, by, 7, 0, Math.PI * 2);

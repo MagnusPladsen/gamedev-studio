@@ -24,6 +24,7 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import { useHistory } from "@/hooks/useHistory";
@@ -489,7 +490,7 @@ export default function TilemapPage() {
               <div
                 key={tm.id}
                 {...assetTriggerProps({ type: "tilemap", id: tm.id })}
-                tabIndex={0}
+                {...rowButtonProps(() => assetTriggerProps({ type: "tilemap", id: tm.id }))}
                 className="group flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer"
                 style={{ background: current?.id === tm.id ? "var(--bg-hover)" : "transparent", color: "var(--text-primary)" }}
                 onClick={() => selectTilemap(tm)}

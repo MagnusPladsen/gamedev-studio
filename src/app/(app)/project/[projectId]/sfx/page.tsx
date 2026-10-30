@@ -15,6 +15,7 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import { SAMPLE_RATE, synthesize } from "@/lib/audio/sfx-synth";
@@ -615,7 +616,7 @@ export default function SfxPage() {
                   <div
                     key={sound.id}
                     {...assetTriggerProps({ type: "sound", id: sound.id })}
-                    tabIndex={0}
+                    {...rowButtonProps(() => assetTriggerProps({ type: "sound", id: sound.id }))}
                     className="group flex items-center justify-between p-2 rounded-lg cursor-pointer"
                     style={{ background: activeId === sound.id ? "var(--bg-hover)" : "transparent" }}
                     onClick={() => loadSaved(sound)}

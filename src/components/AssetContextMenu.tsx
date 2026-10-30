@@ -34,6 +34,7 @@ import {
   type AssetMenuEntry,
 } from "@/lib/asset-menu-items";
 import { assetHref } from "@/lib/assets";
+import { decideEditorRefresh, willOpenParamChange } from "@/lib/editor-refresh";
 import { flushAllAutosaves } from "@/lib/autosave-registry";
 import { downloadBlob } from "@/lib/download";
 import { addLink, getRelated } from "@/lib/links";
@@ -117,7 +118,7 @@ interface ActionRun extends MenuTarget {
 
 type ActionHandler = (run: ActionRun) => void | Promise<void>;
 
-const COPY_FAILED_MESSAGE = "Couldn't copy: the browser blocked the clipboard";
+export const COPY_FAILED_MESSAGE = "Couldn't copy: the browser blocked the clipboard";
 const ACTION_FAILED_MESSAGE = "Something went wrong";
 const ISSUE_ORDER_STEP = 1000;
 const PROJECT_PATH = /\/project\/([^/]+)/;
@@ -192,22 +193,29 @@ function urlWithOpen(pathname: string, id: string): string {
   return `${pathname}?${params.toString()}`;
 }
 
-/** The asset the editor on screen reports as open, when it belongs to that tool. */
-function openAssetOnScreen(pathname: string, projectId: string): AssetRef | null {
+/** The asset the editor on screen reports as open, when it belongs to that tool and is stored (or was just deleted by this change). */
+function openAssetOnScreen(pathname: string, projectId: string, deleted: AssetRef | null): AssetRef | null {
   const open = getOpenAsset();
-  return open && needsEditorReload(pathname, projectId, open.type) ? open : null;
+  if (!open || !needsEditorReload(pathname, projectId, open.type)) return null;
+  const isJustDeleted = deleted?.type === open.type && deleted.id === open.id;
+  return isJustDeleted || getStoredAsset(projectId, open) ? open : null;
+}
+
+function refreshTarget(services: MenuServices, outcome: NonNullable<MutationOutcome>, open: string | null): { href: string; open: string | null } {
+  const { pathname, projectId } = services;
+  if (outcome.kind === "created") return { href: assetHref(projectId, outcome.ref.type, outcome.ref.id), open };
+  return { href: open ? urlWithOpen(pathname, open) : urlWithoutOpen(pathname), open };
 }
 
 /** Re-mounts the editor on screen when it shows the changed asset's tool, keeping its open asset open. */
 function refreshEditor(services: MenuServices, outcome: MutationOutcome): void {
   const { pathname, projectId, openId } = services;
   if (!outcome || !needsEditorReload(pathname, projectId, outcome.ref.type)) return;
-  if (outcome.kind === "created") return services.navigateThenReload(assetHref(projectId, outcome.ref.type, outcome.ref.id), outcome.ref.id);
-  const keep = openAssetOnScreen(pathname, projectId);
-  const current = keep?.id ?? openId;
-  if (outcome.kind === "deleted" && outcome.ref.id === current) return services.navigateThenReload(urlWithoutOpen(pathname), null);
-  if (keep && keep.id !== openId) return services.navigateThenReload(urlWithOpen(pathname, keep.id), keep.id);
-  services.reloadView();
+  const deleted = outcome.kind === "deleted" ? outcome.ref : null;
+  const decision = decideEditorRefresh(outcome, openId, openAssetOnScreen(pathname, projectId, deleted));
+  if (decision.kind === "reload") return services.reloadView();
+  const { href, open } = refreshTarget(services, outcome, decision.open);
+  services.navigateThenReload(href, open);
 }
 
 /** Writes pending editor saves first, so an open editor cannot overwrite the change afterwards. */
@@ -306,10 +314,11 @@ function addToSprint({ services, context, arg }: ActionRun): void {
 }
 
 async function toggleNotePin({ services, item }: ActionRun): Promise<void> {
-  const note = item as Note;
+  const { id } = item as Note;
   await mutate(services, () => {
+    const note = storage.getById("notes", id, services.projectId) ?? (item as Note);
     storage.save("notes", { ...note, pinned: !note.pinned, updatedAt: new Date().toISOString() }, services.projectId);
-    return { kind: "changed", ref: { type: "note", id: note.id } };
+    return { kind: "changed", ref: { type: "note", id } };
   });
 }
 
@@ -587,10 +596,11 @@ function useNavigateThenReload(openId: string | null, reloadView: () => void): M
   }, [openId, reloadView]);
   return useCallback(
     (href: string, open: string | null) => {
-      pendingOpen.current = { open };
       router.replace(href, { scroll: false });
+      if (willOpenParamChange(open, openId)) pendingOpen.current = { open };
+      else reloadView();
     },
-    [router],
+    [router, openId, reloadView],
   );
 }
 

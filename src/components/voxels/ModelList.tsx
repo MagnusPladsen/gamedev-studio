@@ -3,6 +3,7 @@
 import { Box, Image as ImageIcon, Plus, Trash2 } from "lucide-react";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { LinkedAssets } from "@/components/LinkedAssets";
+import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { VoxelModel } from "@/types";
@@ -24,7 +25,7 @@ function ModelRow({ model, isActive, onOpen, onDelete }: { model: VoxelModel; is
   return (
     <div
       {...assetTriggerProps({ type: "model", id: model.id })}
-      tabIndex={0}
+      {...rowButtonProps(() => assetTriggerProps({ type: "model", id: model.id }))}
       className="group flex items-center gap-1.5 px-2 py-1.5 rounded text-xs cursor-pointer hover:bg-[var(--bg-hover)]"
       style={{ background: isActive ? "var(--bg-hover)" : undefined, color: isActive ? "var(--text-primary)" : "var(--text-secondary)" }}
       onClick={onOpen}

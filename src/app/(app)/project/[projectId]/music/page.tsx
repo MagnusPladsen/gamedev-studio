@@ -27,6 +27,7 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import { midiToFreq, scheduleNote } from "@/lib/audio/music-synth";
@@ -638,7 +639,7 @@ export default function MusicPage() {
             <div
               key={t.id}
               {...assetTriggerProps({ type: "music", id: t.id })}
-              tabIndex={0}
+              {...rowButtonProps(() => assetTriggerProps({ type: "music", id: t.id }))}
               className="group flex items-center gap-1 px-2 py-1.5 cursor-pointer text-xs border-b"
               style={{
                 background: t.id === activeTrack?.id ? "var(--bg-hover)" : "transparent",

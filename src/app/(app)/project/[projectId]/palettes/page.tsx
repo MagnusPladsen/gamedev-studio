@@ -15,6 +15,7 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 
@@ -271,7 +272,7 @@ export default function PalettesPage() {
               <div
                 key={p.id}
                 {...assetTriggerProps({ type: "palette", id: p.id })}
-                tabIndex={0}
+                {...rowButtonProps(() => assetTriggerProps({ type: "palette", id: p.id }))}
                 className="group flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer"
                 style={{
                   background: selected?.id === p.id ? "var(--bg-hover)" : "transparent",

@@ -42,7 +42,8 @@ import { LinkedAssets } from "@/components/LinkedAssets";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
-import { useAssetMenu } from "@/components/AssetContextMenu";
+import { rowButtonProps } from "@/lib/row-button";
+import { COPY_FAILED_MESSAGE, useAssetMenu } from "@/components/AssetContextMenu";
 import type { ContextMenuEntry } from "@/components/ContextMenu";
 import { useToast } from "@/components/Toast";
 import { copyToSystemClipboard } from "@/lib/asset-actions";
@@ -777,7 +778,7 @@ export default function PixelArtPage() {
   function deleteFrame(index = activeFrame) {
     if (frames.length <= 1) return;
     const next = frames.filter((_, i) => i !== index);
-    const newActive = Math.min(index, next.length - 1);
+    const newActive = index < activeFrame ? activeFrame - 1 : Math.min(activeFrame, next.length - 1);
     setFrames(next);
     setActiveFrame(newActive);
     pushHistory(next, newActive, activeLayer);
@@ -788,15 +789,16 @@ export default function PixelArtPage() {
     if (target < 0 || target >= frames.length) return;
     const next = [...frames];
     [next[index], next[target]] = [next[target], next[index]];
+    const newActive = activeFrame === index ? target : activeFrame === target ? index : activeFrame;
     setFrames(next);
-    setActiveFrame(target);
-    pushHistory(next, target, activeLayer);
+    setActiveFrame(newActive);
+    pushHistory(next, newActive, activeLayer);
   }
 
   async function copyFrameAsPng(index: number) {
     const dataUrl = await compositeFrame(frames[index], canvasW, canvasH);
     const isCopied = await copyToSystemClipboard({ kind: "png", dataUrl });
-    showToast({ message: isCopied ? "Copied" : "Couldn't copy: the browser blocked the clipboard" });
+    showToast({ message: isCopied ? "Copied" : COPY_FAILED_MESSAGE });
   }
 
   function frameMenuEntries(index: number): ContextMenuEntry[] {
@@ -987,7 +989,7 @@ export default function PixelArtPage() {
           <div
             key={s.id}
             {...assetTriggerProps({ type: "sprite", id: s.id })}
-            tabIndex={0}
+            {...rowButtonProps(() => assetTriggerProps({ type: "sprite", id: s.id }))}
             className="group flex items-center gap-1.5 w-full text-xs px-2 py-1 rounded cursor-pointer hover:bg-[var(--bg-hover)]"
             onClick={() => loadSprite(s)}
             style={{

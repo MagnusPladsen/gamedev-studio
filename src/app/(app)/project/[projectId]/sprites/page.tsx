@@ -14,6 +14,7 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { ExportMenu } from "@/components/ExportMenu";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { Sprite, SpriteSheet } from "@/types";
@@ -297,7 +298,7 @@ export default function SpriteSheetPage() {
               <div
                 key={s.id}
                 {...assetTriggerProps({ type: "spritesheet", id: s.id })}
-                tabIndex={0}
+                {...rowButtonProps(() => assetTriggerProps({ type: "spritesheet", id: s.id }))}
                 className="group flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer"
                 style={{ background: current?.id === s.id ? "var(--bg-hover)" : "transparent", color: "var(--text-primary)" }}
                 onClick={() => {

@@ -6,6 +6,7 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { SaveState } from "@/hooks/useAutosave";
@@ -764,7 +765,7 @@ export default function DialoguePage() {
               <div
                 key={t.id}
                 {...assetTriggerProps({ type: "dialogue", id: t.id })}
-                tabIndex={0}
+                {...rowButtonProps(() => assetTriggerProps({ type: "dialogue", id: t.id }))}
                 className="group flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-colors"
                 style={{
                   background: "var(--bg-card)",
