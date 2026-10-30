@@ -19,6 +19,9 @@ First public beta.
 - **Palettes:** shared palettes with PICO-8, Game Boy, NES, Endesga 16 and Sweetie 16 presets
 - **Sprite sheets:** pack sprites and frames into a PNG plus a JSON atlas
 - **Notebook:** ideas, to-dos, design docs and bug lists with clickable checklists, folders and pins
+- **Task Board:** Jira-style sprints and backlog with editable columns; finished issues are archived off the board
+  but stay searchable; issue notes live in the Notebook
+- **Animated GIF export** from Pixel Art
 
 ### Everything else
 - Projects keep each game's assets separate; export/import a whole project as one JSON file
@@ -29,5 +32,7 @@ First public beta.
 - Hand-made example assets in every tool to start from
 - Undo/redo in every tool (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z, Ctrl+Y) with toolbar buttons
 - Listening volume for Music and SFX (exports are unaffected); zoom in the music piano roll
+- Autosave in every tool; "Pip's Quest" example assets that can be added or removed per tool
+- Each tool has its own colour; phone layouts for every tool
 
 [0.1.0-beta]: https://github.com/MagnusPladsen/gamedev-studio/releases/tag/v0.1.0-beta

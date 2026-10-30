@@ -24,7 +24,8 @@ A free, open source game development toolkit. Create pixel art, music, sound eff
 
 | Tool | What it does |
 | --- | --- |
-| **Pixel Art** | Sprites with layers, animation frames, onion skinning, undo/redo, PNG and sprite sheet export |
+| **Task Board** | Jira-style sprints: To Do, In Progress, Testing, Done (columns are yours to change), backlog, issue notes, links to assets |
+| **Pixel Art** | Sprites with layers, animation frames, onion skinning, project palettes, PNG, sprite sheet and animated GIF export |
 | **Music** | Piano-roll composer with melody, harmony, bass and drum channels, zoomable. WAV export |
 | **SFX** | Retro sound effect generator (jump, laser, coin, explosion…) with sliders and WAV export |
 | **Tilemap** | Paint levels with the sprites you drew, on multiple layers. PNG export |
@@ -34,6 +35,9 @@ A free, open source game development toolkit. Create pixel art, music, sound eff
 | **Palettes** | Shared colour palettes with PICO-8, Game Boy, NES and more presets |
 | **Sprite sheets** | Pack sprites and their animation frames into one PNG plus a JSON atlas |
 | **Notebook** | Ideas, to-do lists, design docs and bug lists, with clickable checklists and `[[links]]` |
+
+Everything saves automatically. New projects can start with **Pip's Quest**, a small sample game spread across every
+tool that you can learn from, edit, or remove in one click.
 
 Undo and redo work everywhere: <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> and <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>
 (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>), plus buttons in every toolbar.
