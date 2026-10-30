@@ -22,6 +22,8 @@ import {
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
 import type { DialogueTree, DialogueNode } from "@/types";
+import { useOpenParam } from "@/hooks/useStorage";
+import { LinkedAssets } from "@/components/LinkedAssets";
 
 type NodeType = DialogueNode["type"];
 
@@ -178,11 +180,31 @@ export default function DialoguePage() {
   const [editingNode, setEditingNode] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const flashTimer = useRef<number | null>(null);
+  const [characters, setCharacters] = useState<string[]>([]);
 
   useEffect(() => {
-    const loaded = storage.getAll("dialogues", projectId);
-    setTrees(loaded);
+    setTrees(storage.getAll("dialogues", projectId));
+    setCharacters(
+      storage
+        .getAll("stories", projectId)
+        .filter((s) => s.type === "character")
+        .map((s) => s.title)
+    );
+    setLoaded(true);
   }, [projectId]);
+
+  useOpenParam((id) => {
+    const tree = storage.getById("dialogues", id, projectId);
+    if (tree) {
+      setActiveTree(tree);
+      setSelectedNode(null);
+      setEditingNode(null);
+      setPreview(null);
+    }
+  }, loaded);
 
   const saveTree = useCallback(
     (tree: DialogueTree) => {
@@ -190,6 +212,9 @@ export default function DialoguePage() {
       storage.save("dialogues", updated, projectId);
       setActiveTree(updated);
       setTrees(storage.getAll("dialogues", projectId));
+      setSavedFlash(true);
+      if (flashTimer.current) window.clearTimeout(flashTimer.current);
+      flashTimer.current = window.setTimeout(() => setSavedFlash(false), 1500);
     },
     [projectId]
   );
@@ -270,12 +295,13 @@ export default function DialoguePage() {
     if (editingNode === id) setEditingNode(null);
   }
 
-  function updateNode(id: string, patch: Partial<DialogueNode>) {
+  function updateNode(id: string, patch: Partial<DialogueNode>, persist = true) {
     if (!activeTree) return;
     const nodes = activeTree.nodes.map((n) =>
       n.id === id ? { ...n, ...patch } : n
     );
-    saveTree({ ...activeTree, nodes });
+    if (persist) saveTree({ ...activeTree, nodes });
+    else setActiveTree({ ...activeTree, nodes });
   }
 
   function clientToCanvas(cx: number, cy: number) {
@@ -302,10 +328,12 @@ export default function DialoguePage() {
     }
     if (draggingNode && activeTree) {
       const pt = clientToCanvas(e.clientX, e.clientY);
-      updateNode(draggingNode, {
-        x: pt.x - dragOffset.x,
-        y: pt.y - dragOffset.y,
-      });
+      // Move locally while dragging; persisted once on mouse up.
+      updateNode(
+        draggingNode,
+        { x: pt.x - dragOffset.x, y: pt.y - dragOffset.y },
+        false
+      );
     }
     if (connecting) {
       setConnecting({ ...connecting, mx: e.clientX, my: e.clientY });
@@ -314,6 +342,7 @@ export default function DialoguePage() {
 
   function handleCanvasMouseUp(e: React.MouseEvent) {
     setIsPanning(false);
+    if (draggingNode && activeTree) saveTree(activeTree);
     setDraggingNode(null);
     if (connecting && activeTree) {
       const pt = clientToCanvas(e.clientX, e.clientY);
@@ -803,6 +832,15 @@ export default function DialoguePage() {
               saveTree({ ...activeTree, name: e.target.value })
             }
           />
+          <span
+            className="text-xs transition-opacity"
+            style={{ color: "var(--green)", opacity: savedFlash ? 1 : 0 }}
+          >
+            Saved
+          </span>
+          <div className="hidden lg:block">
+            <LinkedAssets projectId={projectId} type="dialogue" id={activeTree.id} layout="row" />
+          </div>
         </div>
 
         <div className="flex items-center gap-1">
@@ -1032,6 +1070,7 @@ export default function DialoguePage() {
             node={activeTree.nodes.find((n) => n.id === editingNode)!}
             onUpdate={(patch) => updateNode(editingNode, patch)}
             onClose={() => setEditingNode(null)}
+            characters={characters}
           />
         )}
 
@@ -1155,10 +1194,12 @@ function EditPanel({
   node,
   onUpdate,
   onClose,
+  characters,
 }: {
   node: DialogueNode;
   onUpdate: (patch: Partial<DialogueNode>) => void;
   onClose: () => void;
+  characters: string[];
 }) {
   return (
     <div
@@ -1198,7 +1239,14 @@ function EditPanel({
             }}
             value={node.speaker || ""}
             onChange={(e) => onUpdate({ speaker: e.target.value })}
+            list="dialogue-speakers"
+            placeholder={characters.length ? "Pick a story character or type a name" : "Speaker name"}
           />
+          <datalist id="dialogue-speakers">
+            {characters.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
           <label
             className="block text-xs mb-1"
             style={{ color: "var(--text-secondary)" }}

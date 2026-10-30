@@ -36,7 +36,7 @@ export default function ProjectsPage() {
   }
 
   function deleteProject(id: string) {
-    if (!confirm("Delete this project and all its assets?")) return;
+    if (!confirm("Delete this project and everything in it? This cannot be undone.")) return;
     storage.delete("projects", id);
     setProjects(storage.getAll("projects"));
   }
@@ -81,6 +81,9 @@ export default function ProjectsPage() {
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
             Each project keeps its assets separate. Create one per game.
+          </p>
+          <p className="text-xs mt-2" style={{ color: "var(--yellow)" }}>
+            GameDev Studio is in beta. Export your projects now and then as a backup.
           </p>
         </div>
         <div className="flex items-center gap-2">

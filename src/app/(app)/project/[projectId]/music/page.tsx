@@ -13,8 +13,11 @@ import {
   Volume2,
   VolumeX,
   ChevronDown,
+  Check,
 } from "lucide-react";
 import { storage } from "@/lib/storage";
+import { useOpenParam } from "@/hooks/useStorage";
+import { LinkedAssets } from "@/components/LinkedAssets";
 import type { MusicTrack, MusicChannel, MusicPattern, MusicNote } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -263,7 +266,9 @@ export default function MusicPage() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const playIntervalRef = useRef<number | null>(null);
   const startTimeRef = useRef(0);
-  const scheduledRef = useRef<OscillatorNode[]>([]);
+  const scheduledRef = useRef<AudioScheduledSourceNode[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
     const saved = storage.getAll("music", projectId);
@@ -278,6 +283,7 @@ export default function MusicPage() {
       setTracks(saved);
       setActiveTrack(saved[0]);
     }
+    setLoaded(true);
   }, [projectId]);
 
   const stopPlayback = useCallback(() => {
@@ -293,10 +299,22 @@ export default function MusicPage() {
     setPlayhead(0);
   }, []);
 
+  useEffect(() => stopPlayback, [stopPlayback]);
+
+  useOpenParam((id) => {
+    const t = storage.getById("music", id, projectId);
+    if (t) {
+      stopPlayback();
+      setActiveTrack(t);
+    }
+  }, loaded);
+
   function getAudioCtx() {
     if (!audioCtxRef.current) {
       audioCtxRef.current = new AudioContext();
     }
+    // Play is a click handler, so resuming here happens inside the user gesture.
+    if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
     return audioCtxRef.current;
   }
 
@@ -338,6 +356,7 @@ export default function MusicPage() {
       bpf.connect(gain);
       src.start(startTime);
       src.stop(startTime + dur);
+      track(src);
     } else {
       const osc = ctx.createOscillator();
       osc.type = instrument as OscillatorType;
@@ -345,8 +364,15 @@ export default function MusicPage() {
       osc.connect(gain);
       osc.start(startTime);
       osc.stop(startTime + dur);
-      scheduledRef.current.push(osc);
+      track(osc);
     }
+  }
+
+  function track(node: AudioScheduledSourceNode) {
+    scheduledRef.current.push(node);
+    node.onended = () => {
+      scheduledRef.current = scheduledRef.current.filter((n) => n !== node);
+    };
   }
 
   function startPlayback() {
@@ -424,7 +450,12 @@ export default function MusicPage() {
 
   function saveTrack() {
     if (!activeTrack) return;
-    storage.save("music", activeTrack, projectId);
+    const saved = { ...activeTrack, updatedAt: new Date().toISOString() };
+    storage.save("music", saved, projectId);
+    setActiveTrack(saved);
+    setTracks(storage.getAll("music", projectId));
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1500);
   }
 
   function newTrack() {
@@ -614,8 +645,8 @@ export default function MusicPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={saveTrack} className="flex items-center gap-1 px-3 py-1.5 rounded text-xs" style={{ background: "var(--accent)", color: "white" }}>
-            <Save className="w-3 h-3" /> Save
+          <button onClick={saveTrack} className="flex items-center gap-1 px-3 py-1.5 rounded text-xs" style={{ background: savedFlash ? "var(--green)" : "var(--accent)", color: "white" }}>
+            {savedFlash ? <Check className="w-3 h-3" /> : <Save className="w-3 h-3" />} {savedFlash ? "Saved" : "Save"}
           </button>
           <button onClick={exportWav} className="flex items-center gap-1 px-3 py-1.5 rounded text-xs" style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
             <Download className="w-3 h-3" /> WAV
@@ -742,6 +773,9 @@ export default function MusicPage() {
                   <option value={32}>32</option>
                 </select>
               </div>
+
+              <div className="w-px h-5" style={{ background: "var(--border)" }} />
+              <LinkedAssets projectId={projectId} type="music" id={activeTrack.id} layout="row" />
             </div>
 
             {/* Channel mixer strip */}

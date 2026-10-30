@@ -19,6 +19,9 @@ import {
   X,
 } from "lucide-react";
 import { useState, Suspense } from "react";
+import { SyncProvider, useSync } from "@/components/SyncProvider";
+import { AccountPanel } from "@/components/AccountPanel";
+import { BetaBadge } from "@/components/BetaBadge";
 
 const toolNav = [
   { icon: LayoutDashboard, name: "Assets", path: "assets", color: "var(--text-secondary)" },
@@ -36,6 +39,7 @@ const toolNav = [
 function AppSidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { ready, generation } = useSync();
 
   const projectMatch = pathname.match(/\/project\/([^/]+)/);
   const projectId = projectMatch?.[1];
@@ -70,6 +74,7 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
             <span className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
               GameDev Studio
             </span>
+            <BetaBadge />
           </Link>
         </div>
 
@@ -126,9 +131,7 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="p-3 border-t" style={{ borderColor: "var(--border)" }}>
-          <div className="text-xs px-2" style={{ color: "var(--text-muted)" }}>
-            Free &amp; Open Source
-          </div>
+          <AccountPanel />
         </div>
       </aside>
 
@@ -141,7 +144,17 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto">
+        {ready ? (
+          <div key={generation} className="h-full">
+            {children}
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center text-sm" style={{ color: "var(--text-secondary)" }}>
+            Loading your projects…
+          </div>
+        )}
+      </main>
     </div>
   );
 }
@@ -158,7 +171,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     }>
-      <AppSidebar>{children}</AppSidebar>
+      <SyncProvider>
+        <AppSidebar>{children}</AppSidebar>
+      </SyncProvider>
     </Suspense>
   );
 }

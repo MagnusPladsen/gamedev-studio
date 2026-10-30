@@ -21,10 +21,18 @@ export interface Sprite {
   updatedAt: string;
 }
 
+export interface SpriteLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  pixels: string; // PNG data URL
+}
+
 export interface SpriteFrame {
   id: string;
-  pixels: string; // base64 encoded pixel data
+  pixels: string; // PNG data URL of all visible layers composited
   duration: number; // ms
+  layers?: SpriteLayer[];
 }
 
 export interface Palette {
@@ -137,7 +145,7 @@ export interface StoryEntry {
 
 export interface AssetLink {
   targetId: string;
-  targetType: "sprite" | "sound" | "music" | "diagram" | "story" | "tilemap" | "dialogue" | "palette";
+  targetType: AssetType;
   label?: string;
 }
 
@@ -159,7 +167,7 @@ export interface TilemapLayer {
   id: string;
   name: string;
   visible: boolean;
-  tiles: (number | null)[][]; // row x col, value = tile index or null
+  tiles: (number | string | null)[][]; // number = basic color tile, string = sprite id, null = empty
 }
 
 export interface DialogueTree {
@@ -195,3 +203,17 @@ export interface SpriteSheet {
 }
 
 export type AssetType = "sprite" | "sound" | "music" | "diagram" | "story" | "tilemap" | "dialogue" | "palette" | "spritesheet";
+
+export interface AssetRef {
+  type: AssetType;
+  id: string;
+}
+
+export interface AssetRelation {
+  id: string;
+  projectId: string;
+  from: AssetRef;
+  to: AssetRef;
+  createdAt: string;
+  updatedAt: string;
+}

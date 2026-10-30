@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://gamedev-studio.pladsen.dev"),
-  title: "GameDev Studio - Free Open Source Game Development Toolkit",
+  title: "GameDev Studio (Beta) - Free Open Source Game Development Toolkit",
   description:
     "Create pixel art, music, sound effects, tilemaps, dialogue trees, and plan your game — all in one free, open source app. No watermarks. No paywalls.",
   keywords: [

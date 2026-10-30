@@ -21,19 +21,31 @@ import {
   FileText,
   ArrowRight,
   GitBranch,
+  Check,
+  ExternalLink,
 } from "lucide-react";
+import Link from "next/link";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
-import type { Diagram, DiagramNode, DiagramEdge } from "@/types";
+import type { Diagram, DiagramNode, DiagramEdge, AssetRef } from "@/types";
+import { useOpenParam } from "@/hooks/useStorage";
+import { LinkedAssets } from "@/components/LinkedAssets";
+import { ASSET_KINDS, ASSET_TYPES, assetHref, getAsset, listAssets } from "@/lib/assets";
 
+// Literal colors: these are also used on the canvas, which can't resolve CSS variables.
 const NODE_COLORS: Record<DiagramNode["type"], string> = {
-  state: "var(--blue)",
-  action: "var(--green)",
-  condition: "var(--yellow)",
-  event: "var(--pink)",
+  state: "#60a5fa",
+  action: "#34d399",
+  condition: "#fbbf24",
+  event: "#f472b6",
   note: "#666680",
-  custom: "var(--accent)",
+  custom: "#7c5cfc",
 };
+
+function nodeAsset(node: DiagramNode): AssetRef | undefined {
+  const a = node.data?.asset as AssetRef | undefined;
+  return a && typeof a.id === "string" && typeof a.type === "string" ? a : undefined;
+}
 
 const NODE_LABELS: Record<DiagramNode["type"], string> = {
   state: "State",
@@ -107,6 +119,8 @@ export default function DiagramsPage() {
   const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [showNodeMenu, setShowNodeMenu] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
 
   const stateRef = useRef({ pan, zoom, current, dragging, panning, mode, connectFrom, selectedNodeId, selectedEdgeId });
   stateRef.current = { pan, zoom, current, dragging, panning, mode, connectFrom, selectedNodeId, selectedEdgeId };
@@ -118,7 +132,13 @@ export default function DiagramsPage() {
       setCurrent(all[0]);
       setShowList(false);
     }
+    setLoaded(true);
   }, [projectId]);
+
+  useOpenParam((id) => {
+    const d = storage.getById("diagrams", id, projectId);
+    if (d) loadDiagram(d);
+  }, loaded);
 
   // --- Drawing ---
   const draw = useCallback(() => {
@@ -234,7 +254,7 @@ export default function DiagramsPage() {
       const fromN = diagram.nodes.find((n) => n.id === cf);
       if (fromN && (window as unknown as { __mouseCanvas?: { x: number; y: number } }).__mouseCanvas) {
         const mc = (window as unknown as { __mouseCanvas: { x: number; y: number } }).__mouseCanvas;
-        ctx.strokeStyle = "var(--accent)";
+        ctx.strokeStyle = "#7c5cfc";
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
@@ -248,7 +268,7 @@ export default function DiagramsPage() {
     // Nodes
     for (const node of diagram.nodes) {
       const isSel = node.id === selNode;
-      const col = NODE_COLORS[node.type] || "var(--accent)";
+      const col = NODE_COLORS[node.type] || "#7c5cfc";
       const isConnSrc = node.id === cf;
 
       ctx.save();
@@ -326,6 +346,20 @@ export default function DiagramsPage() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(node.label, node.x + node.width / 2, node.y + node.height / 2, node.width - 12);
+
+      // Linked-asset badge
+      const linked = nodeAsset(node);
+      if (linked) {
+        const bx = node.x + node.width - 2;
+        const by = node.y + 2;
+        ctx.fillStyle = ASSET_KINDS[linked.type]?.color ?? "#7c5cfc";
+        ctx.beginPath();
+        ctx.arc(bx, by, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#0a0a0f";
+        ctx.font = "bold 9px system-ui, sans-serif";
+        ctx.fillText("↗", bx, by + 0.5);
+      }
 
       // Connection handles
       if (isSel || isConnSrc) {
@@ -526,6 +560,7 @@ export default function DiagramsPage() {
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (editingNodeId || editingEdgeId) return;
+    if ((e.target as HTMLElement).closest("input, select, textarea")) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       if (selectedNodeId) {
         updateCurrent((d) => ({
@@ -586,8 +621,29 @@ export default function DiagramsPage() {
 
   function saveDiagram() {
     if (!current) return;
-    storage.save("diagrams", current, projectId);
+    const saved = { ...current, updatedAt: new Date().toISOString() };
+    storage.save("diagrams", saved, projectId);
+    setCurrent(saved);
     setDiagrams(storage.getAll("diagrams", projectId));
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1500);
+  }
+
+  function setNodeAsset(nodeId: string, value: string) {
+    updateCurrent((d) => ({
+      ...d,
+      nodes: d.nodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        const data = { ...(n.data ?? {}) };
+        if (value) {
+          const [type, ...rest] = value.split(":");
+          data.asset = { type, id: rest.join(":") };
+        } else {
+          delete data.asset;
+        }
+        return { ...n, data };
+      }),
+    }));
   }
 
   function loadDiagram(d: Diagram) {
@@ -742,6 +798,10 @@ export default function DiagramsPage() {
     );
   }
 
+  const selectedNode = current?.nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const selectedAsset = selectedNode ? nodeAsset(selectedNode) : undefined;
+  const projectAssets = selectedNode ? listAssets(projectId) : [];
+
   // --- Editor view ---
   return (
     <div className="flex flex-col h-full" onKeyDown={handleKeyDown} tabIndex={0}>
@@ -764,6 +824,16 @@ export default function DiagramsPage() {
             value={current?.name || ""}
             onChange={(e) => updateCurrent((d) => ({ ...d, name: e.target.value }))}
           />
+          {current && (
+            <div className="ml-2 hidden md:block">
+              <LinkedAssets
+                projectId={projectId}
+                type="diagram"
+                id={diagrams.some((d) => d.id === current.id) ? current.id : null}
+                layout="row"
+              />
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -850,8 +920,9 @@ export default function DiagramsPage() {
 
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
 
-          <button onClick={saveDiagram} className="p-1.5 rounded" style={{ color: "var(--green)" }} title="Save">
-            <Save className="w-4 h-4" />
+          <button onClick={saveDiagram} className="flex items-center gap-1 p-1.5 rounded text-xs" style={{ color: "var(--green)" }} title="Save">
+            {savedFlash ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            {savedFlash && "Saved"}
           </button>
           <button onClick={exportPng} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Export PNG">
             <Download className="w-4 h-4" />
@@ -894,6 +965,52 @@ export default function DiagramsPage() {
                 <button onClick={commitEdit} className="px-3 py-1 rounded text-xs" style={{ background: "var(--accent)", color: "white" }}>OK</button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Selected node: linked asset */}
+        {selectedNode && (
+          <div
+            className="absolute top-3 right-3 z-10 w-64 p-3 rounded-xl border space-y-2"
+            style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+          >
+            <div className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
+              {NODE_LABELS[selectedNode.type]}: {selectedNode.label}
+            </div>
+            <label className="block text-xs" style={{ color: "var(--text-secondary)" }}>
+              Linked asset
+              <select
+                value={selectedAsset ? `${selectedAsset.type}:${selectedAsset.id}` : ""}
+                onChange={(e) => setNodeAsset(selectedNode.id, e.target.value)}
+                className="mt-1 w-full px-2 py-1 rounded text-xs outline-none"
+                style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              >
+                <option value="">None</option>
+                {ASSET_TYPES.map((t) => {
+                  const group = projectAssets.filter((a) => a.type === t);
+                  if (!group.length) return null;
+                  return (
+                    <optgroup key={t} label={ASSET_KINDS[t].label}>
+                      {group.map((a) => (
+                        <option key={a.id} value={`${a.type}:${a.id}`}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </select>
+            </label>
+            {selectedAsset && (
+              <Link
+                href={assetHref(projectId, selectedAsset.type, selectedAsset.id)}
+                className="flex items-center gap-1 text-xs hover:underline"
+                style={{ color: "var(--accent)" }}
+              >
+                <ExternalLink className="w-3 h-3" />
+                Open {getAsset(projectId, selectedAsset.type, selectedAsset.id)?.name ?? "asset"}
+              </Link>
+            )}
           </div>
         )}
 

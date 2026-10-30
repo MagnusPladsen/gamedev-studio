@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { Play, Save, Download, Trash2, Shuffle, Dices, Volume2 } from "lucide-react";
+import { Play, Save, Download, Trash2, Shuffle, Dices, Volume2, Plus, Check } from "lucide-react";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
+import { useOpenParam } from "@/hooks/useStorage";
+import { LinkedAssets } from "@/components/LinkedAssets";
 import type { SoundEffect, SfxParams } from "@/types";
 
 const SAMPLE_RATE = 44100;
@@ -331,15 +333,31 @@ function bufferToWav(buffer: Float32Array): ArrayBuffer {
   return arrayBuffer;
 }
 
+let audioCtx: AudioContext | null = null;
+let currentSource: AudioBufferSourceNode | null = null;
+
+// Called from click handlers, so the context is created/resumed inside a user gesture.
 function playBuffer(buffer: Float32Array) {
-  const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
-  const audioBuffer = ctx.createBuffer(1, buffer.length, SAMPLE_RATE);
+  if (buffer.length === 0) return;
+  audioCtx ??= new AudioContext();
+  if (audioCtx.state === "suspended") void audioCtx.resume();
+  if (currentSource) {
+    try {
+      currentSource.stop();
+    } catch {
+      // already stopped
+    }
+  }
+  const audioBuffer = audioCtx.createBuffer(1, buffer.length, SAMPLE_RATE);
   audioBuffer.getChannelData(0).set(buffer);
-  const source = ctx.createBufferSource();
+  const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
-  source.connect(ctx.destination);
+  source.connect(audioCtx.destination);
   source.start();
-  source.onended = () => ctx.close();
+  currentSource = source;
+  source.onended = () => {
+    if (currentSource === source) currentSource = null;
+  };
 }
 
 function drawWaveform(canvas: HTMLCanvasElement, buffer: Float32Array) {
@@ -384,10 +402,19 @@ export default function SfxPage() {
   const [savedSounds, setSavedSounds] = useState<SoundEffect[]>([]);
   const [saveName, setSaveName] = useState("");
   const [currentBuffer, setCurrentBuffer] = useState<Float32Array>(new Float32Array(0));
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setSavedSounds(storage.getAll("sounds", projectId));
+    setLoaded(true);
   }, [projectId]);
+
+  useOpenParam((id) => {
+    const sound = storage.getById("sounds", id, projectId);
+    if (sound) loadSaved(sound, false);
+  }, loaded);
 
   useEffect(() => {
     if (canvasRef.current) {
@@ -427,6 +454,7 @@ export default function SfxPage() {
     setCurrentBuffer(buf);
     playBuffer(buf);
     setSaveName(ex.name);
+    setActiveId(null);
   }
 
   function randomize() {
@@ -435,8 +463,8 @@ export default function SfxPage() {
   }
 
   function mutate() {
-    setSfxParams((prev) => {
-      const p = { ...prev };
+    {
+      const p = { ...sfxParams };
       p.frequency = Math.max(20, p.frequency + rand(-100, 100));
       p.frequencySlide = Math.max(-1, Math.min(1, p.frequencySlide + rand(-0.1, 0.1)));
       p.sustainTime = Math.max(0.01, p.sustainTime + rand(-0.05, 0.05));
@@ -446,29 +474,42 @@ export default function SfxPage() {
       const buf = synthesize(p);
       setCurrentBuffer(buf);
       playBuffer(buf);
-      return p;
-    });
+      setSfxParams(p);
+    }
   }
 
-  function saveSound() {
+  function saveSound(asNew = false) {
     const name = saveName.trim() || "Untitled Sound";
+    const existing = !asNew && activeId ? storage.getById("sounds", activeId, projectId) : undefined;
+    const now = new Date().toISOString();
     const sound: SoundEffect = {
-      id: uuid(),
+      id: existing?.id ?? uuid(),
       projectId,
       name,
       params: { ...sfxParams },
-      tags: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      tags: existing?.tags ?? [],
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
     };
     storage.save("sounds", sound, projectId);
     setSavedSounds(storage.getAll("sounds", projectId));
+    setSaveName(name);
+    setActiveId(sound.id);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1500);
+  }
+
+  function newSound() {
+    setActiveId(null);
     setSaveName("");
+    setSfxParams({ ...DEFAULT_PARAMS });
+    setCurrentBuffer(synthesize(DEFAULT_PARAMS));
   }
 
   function deleteSound(id: string) {
     storage.delete("sounds", id, projectId);
     setSavedSounds(storage.getAll("sounds", projectId));
+    if (activeId === id) setActiveId(null);
   }
 
   function playSaved(sound: SoundEffect) {
@@ -476,12 +517,13 @@ export default function SfxPage() {
     playBuffer(buf);
   }
 
-  function loadSaved(sound: SoundEffect) {
+  function loadSaved(sound: SoundEffect, play = true) {
     setSfxParams({ ...sound.params });
     setSaveName(sound.name);
+    setActiveId(sound.id);
     const buf = synthesize(sound.params);
     setCurrentBuffer(buf);
-    playBuffer(buf);
+    if (play) playBuffer(buf);
   }
 
   function exportWav() {
@@ -739,8 +781,12 @@ export default function SfxPage() {
         <div className="w-full lg:w-72 space-y-4">
           {/* Save */}
           <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-            <div className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
-              SAVE TO PROJECT
+            <div className="flex items-center justify-between text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
+              <span>{activeId ? "EDITING SAVED SOUND" : "SAVE TO PROJECT"}</span>
+              <button onClick={newSound} className="flex items-center gap-0.5" style={{ color: "var(--accent)" }} title="Start a new sound">
+                <Plus className="w-3 h-3" />
+                New
+              </button>
             </div>
             <input
               type="text"
@@ -752,13 +798,25 @@ export default function SfxPage() {
               onKeyDown={(e) => e.key === "Enter" && saveSound()}
             />
             <button
-              onClick={saveSound}
+              onClick={() => saveSound()}
               className="flex items-center gap-1.5 w-full justify-center px-3 py-1.5 rounded-lg text-sm font-medium"
-              style={{ background: "var(--accent)", color: "white" }}
+              style={{ background: savedFlash ? "var(--green)" : "var(--accent)", color: "white" }}
             >
-              <Save className="w-4 h-4" />
-              Save Sound
+              {savedFlash ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              {savedFlash ? "Saved" : activeId ? "Save Changes" : "Save Sound"}
             </button>
+            {activeId && (
+              <button
+                onClick={() => saveSound(true)}
+                className="w-full mt-1.5 px-3 py-1 rounded-lg text-xs"
+                style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+              >
+                Save as new sound
+              </button>
+            )}
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+              <LinkedAssets projectId={projectId} type="sound" id={activeId} layout="panel" />
+            </div>
           </div>
 
           {/* Saved List */}
@@ -776,10 +834,8 @@ export default function SfxPage() {
                   <div
                     key={sound.id}
                     className="group flex items-center justify-between p-2 rounded-lg transition-colors cursor-pointer"
-                    style={{ background: "transparent" }}
+                    style={{ background: activeId === sound.id ? "var(--bg-hover)" : "transparent" }}
                     onClick={() => loadSaved(sound)}
-                    onMouseOver={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                    onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <Volume2 className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--yellow)" }} />

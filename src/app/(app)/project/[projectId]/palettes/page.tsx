@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { Plus, Trash2, Copy, Download, Palette as PaletteIcon, Check } from "lucide-react";
 import { storage } from "@/lib/storage";
 import type { Palette } from "@/types";
 import { v4 as uuid } from "uuid";
+import { LinkedAssets } from "@/components/LinkedAssets";
+import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
 
 const PRESET_PALETTES: { name: string; colors: string[] }[] = [
   {
@@ -34,16 +36,19 @@ export default function PalettesPage() {
   const params = useParams();
   const projectId = params.projectId as string;
 
-  const [palettes, setPalettes] = useState<Palette[]>([]);
+  const version = useStorageVersion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const palettes = useMemo(() => storage.getAll("palettes", projectId), [projectId, version]);
   const [selected, setSelected] = useState<Palette | null>(null);
   const [newColor, setNewColor] = useState("#7c5cfc");
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
-  useEffect(() => {
-    setPalettes(storage.getAll("palettes", projectId));
-  }, [projectId]);
+  useOpenParam((id) => {
+    const p = storage.getById("palettes", id, projectId);
+    if (p) setSelected(p);
+  });
 
   function createPalette(name?: string, colors?: string[]) {
     const p: Palette = {
@@ -54,7 +59,6 @@ export default function PalettesPage() {
       createdAt: new Date().toISOString(),
     };
     storage.save("palettes", p, projectId);
-    setPalettes(storage.getAll("palettes", projectId));
     setSelected(p);
     setShowNew(false);
     setNewName("");
@@ -65,7 +69,6 @@ export default function PalettesPage() {
     const updated = { ...selected, colors: [...selected.colors, newColor] };
     storage.save("palettes", updated, projectId);
     setSelected(updated);
-    setPalettes(storage.getAll("palettes", projectId));
   }
 
   function removeColor(i: number) {
@@ -73,12 +76,10 @@ export default function PalettesPage() {
     const updated = { ...selected, colors: selected.colors.filter((_, idx) => idx !== i) };
     storage.save("palettes", updated, projectId);
     setSelected(updated);
-    setPalettes(storage.getAll("palettes", projectId));
   }
 
   function deletePalette(id: string) {
     storage.delete("palettes", id, projectId);
-    setPalettes(storage.getAll("palettes", projectId));
     if (selected?.id === id) setSelected(null);
   }
 
@@ -265,6 +266,10 @@ export default function PalettesPage() {
               >
                 Add Color
               </button>
+            </div>
+
+            <div className="mt-8 pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+              <LinkedAssets projectId={projectId} type="palette" id={selected.id} layout="panel" />
             </div>
           </div>
         ) : (

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BetaBadge } from "@/components/BetaBadge";
 import {
   Paintbrush,
   Music,
@@ -64,6 +65,7 @@ export default function LandingPage() {
             <span className="font-semibold text-lg" style={{ color: "var(--text-primary)" }}>
               GameDev Studio
             </span>
+            <BetaBadge />
           </div>
           <div className="flex items-center gap-3">
             <a
@@ -100,7 +102,7 @@ export default function LandingPage() {
             style={{ background: "var(--accent-glow)", color: "var(--accent)", border: "1px solid rgba(124,92,252,0.2)" }}
           >
             <Sparkles className="w-3 h-3" />
-            Free &amp; Open Source — No Watermarks, No Paywalls
+            Public beta · Free &amp; open source · No watermarks
           </div>
           <h1
             className="text-4xl sm:text-6xl font-bold leading-tight tracking-tight mb-6 animate-fade-in stagger-1 opacity-0"
@@ -185,8 +187,8 @@ export default function LandingPage() {
                 Works Everywhere
               </h3>
               <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                Use it online, or clone the repo and host it yourself. Your
-                data stays local or syncs to your own Supabase instance.
+                Works without an account. Sign in to sync across devices, or
+                self-host and save straight to a folder on your computer.
               </p>
             </div>
             <div className="text-center p-6">
@@ -249,6 +251,7 @@ export default function LandingPage() {
               GitHub
             </a>
             <span>MIT License</span>
+            <span>Beta</span>
             <a
               href="https://pladsen.dev"
               target="_blank"

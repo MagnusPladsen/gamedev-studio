@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
   Plus,
   Search,
@@ -13,7 +13,6 @@ import {
   Scroll,
   Flag,
   FileText,
-  Link as LinkIcon,
   X,
   Network,
   ChevronDown,
@@ -21,10 +20,15 @@ import {
   Tag,
   Save,
   BookOpen,
+  CornerDownLeft,
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
-import type { StoryEntry, AssetLink } from "@/types";
+import { getRelated, wikiTargets } from "@/lib/links";
+import { ASSET_KINDS, assetHref } from "@/lib/assets";
+import { LinkedAssets } from "@/components/LinkedAssets";
+import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import type { StoryEntry } from "@/types";
 
 const ENTRY_TYPES = [
   { value: "character" as const, label: "Character", icon: User, color: "#a78bfa" },
@@ -38,27 +42,34 @@ const ENTRY_TYPES = [
 
 type EntryType = (typeof ENTRY_TYPES)[number]["value"];
 
-const ASSET_TYPES = [
-  { value: "sprite" as const, label: "Sprite", collection: "sprites" as const },
-  { value: "sound" as const, label: "Sound", collection: "sounds" as const },
-  { value: "music" as const, label: "Music", collection: "music" as const },
-  { value: "diagram" as const, label: "Diagram", collection: "diagrams" as const },
-  { value: "tilemap" as const, label: "Tilemap", collection: "tilemaps" as const },
-  { value: "dialogue" as const, label: "Dialogue", collection: "dialogues" as const },
-] as const;
+const TEMPLATES: Partial<Record<EntryType, string>> = {
+  character: "## Appearance\n\n## Personality\n\n## Backstory\n\n## Relationships\n",
+  location: "## Description\n\n## Inhabitants\n\n## Points of Interest\n",
+  item: "## Description\n\n## Properties\n\n## Where to Find\n",
+  quest: "## Objective\n\n## Giver\n\n## Steps\n- \n\n## Reward\n",
+};
+
+const WIKI_SPLIT = /(\[\[[^\]]+\]\])/g;
+const AUTOCOMPLETE = /\[\[([^\]\n]*)$/;
 
 function getTypeMeta(type: string) {
   return ENTRY_TYPES.find((t) => t.value === type) ?? ENTRY_TYPES[6];
 }
 
+function parseWiki(raw: string) {
+  const [target, alias] = raw.split("|");
+  return { target: target.trim(), label: (alias ?? target).trim() };
+}
+
+function seededKey(projectId: string) {
+  return `gds-seeded-stories:${projectId}`;
+}
+
 function makeExamples(projectId: string): StoryEntry[] {
-  const heroId = uuid();
-  const villageId = uuid();
-  const swordId = uuid();
   const now = new Date().toISOString();
   return [
     {
-      id: heroId,
+      id: uuid(),
       projectId,
       title: "Hero",
       content:
@@ -70,7 +81,7 @@ function makeExamples(projectId: string): StoryEntry[] {
       updatedAt: now,
     },
     {
-      id: villageId,
+      id: uuid(),
       projectId,
       title: "Starting Village",
       content:
@@ -82,7 +93,7 @@ function makeExamples(projectId: string): StoryEntry[] {
       updatedAt: now,
     },
     {
-      id: swordId,
+      id: uuid(),
       projectId,
       title: "Magic Sword",
       content:
@@ -96,43 +107,80 @@ function makeExamples(projectId: string): StoryEntry[] {
   ];
 }
 
+interface HoverCard {
+  title: string;
+  x: number;
+  y: number;
+}
+
+interface Autocomplete {
+  query: string;
+  start: number; // index of the "[[" in the content
+  index: number;
+}
+
 export default function StoryPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params.projectId as string;
+  const version = useStorageVersion();
 
-  const [entries, setEntries] = useState<StoryEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ id: string; content: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState<EntryType>("character");
   const [showGraph, setShowGraph] = useState(false);
-  const [showAssetLinker, setShowAssetLinker] = useState(false);
   const [tagInput, setTagInput] = useState("");
-  const [dirty, setDirty] = useState(false);
+  const [hover, setHover] = useState<HoverCard | null>(null);
+  const [ac, setAc] = useState<Autocomplete | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    let loaded = storage.getAll("stories", projectId);
-    if (loaded.length === 0) {
-      const examples = makeExamples(projectId);
-      for (const ex of examples) storage.save("stories", ex, projectId);
-      loaded = examples;
+    if (storage.getAll("stories", projectId).length === 0) {
+      let alreadySeeded = false;
+      try {
+        alreadySeeded = localStorage.getItem(seededKey(projectId)) === "1";
+      } catch {}
+      if (!alreadySeeded) {
+        for (const ex of makeExamples(projectId)) storage.save("stories", ex, projectId);
+      }
     }
-    setEntries(loaded);
-    if (loaded.length > 0) setSelectedId(loaded[0].id);
+    try {
+      localStorage.setItem(seededKey(projectId), "1");
+    } catch {}
   }, [projectId]);
 
-  const selected = useMemo(() => entries.find((e) => e.id === selectedId) ?? null, [entries, selectedId]);
+  const entries = useMemo(
+    () => storage.getAll("stories", projectId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectId, version]
+  );
+
+  const byTitle = useMemo(() => new Map(entries.map((e) => [e.title.trim().toLowerCase(), e])), [entries]);
+
+  const stored = useMemo(
+    () => entries.find((e) => e.id === selectedId) ?? (selectedId === null ? entries[0] : undefined) ?? null,
+    [entries, selectedId]
+  );
+  const dirty = !!stored && draft?.id === stored.id && draft.content !== stored.content;
+  const selected = useMemo(
+    () => (stored && draft?.id === stored.id ? { ...stored, content: draft.content } : stored),
+    [stored, draft]
+  );
+
+  useOpenParam((id) => {
+    if (storage.getById("stories", id, projectId)) selectEntry(id);
+  });
 
   const grouped = useMemo(() => {
     const groups: Record<string, StoryEntry[]> = {};
     for (const t of ENTRY_TYPES) groups[t.value] = [];
+    const q = searchQuery.toLowerCase();
     for (const entry of entries) {
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        if (!entry.title.toLowerCase().includes(q) && !entry.tags.some((t) => t.toLowerCase().includes(q))) continue;
-      }
+      if (q && !entry.title.toLowerCase().includes(q) && !entry.tags.some((t) => t.toLowerCase().includes(q))) continue;
       (groups[entry.type] ??= []).push(entry);
     }
     return groups;
@@ -143,27 +191,40 @@ export default function StoryPage() {
       if (!selected) return;
       const updated = { ...selected, ...patch, updatedAt: new Date().toISOString() };
       storage.save("stories", updated, projectId);
-      setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-      setDirty(false);
+      if (patch.content !== undefined || draft?.id === updated.id) setDraft(null);
     },
-    [selected, projectId],
+    [selected, projectId, draft]
   );
 
-  function createEntry() {
-    if (!newTitle.trim()) return;
+  function flushDraft() {
+    if (dirty && selected) saveEntry({ content: selected.content });
+  }
+
+  function selectEntry(id: string) {
+    flushDraft();
+    setDraft(null);
+    setAc(null);
+    setHover(null);
+    setSelectedId(id);
+  }
+
+  function createEntry(title = newTitle, type: EntryType = newType) {
+    if (!title.trim()) return;
+    flushDraft();
+    const now = new Date().toISOString();
     const entry: StoryEntry = {
       id: uuid(),
       projectId,
-      title: newTitle.trim(),
-      content: "",
-      type: newType,
+      title: title.trim(),
+      content: TEMPLATES[type] ?? "",
+      type,
       links: [],
       tags: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
     storage.save("stories", entry, projectId);
-    setEntries((prev) => [...prev, entry]);
+    setDraft(null);
     setSelectedId(entry.id);
     setShowNewForm(false);
     setNewTitle("");
@@ -171,14 +232,15 @@ export default function StoryPage() {
 
   function deleteEntry(id: string) {
     storage.delete("stories", id, projectId);
-    setEntries((prev) => prev.filter((e) => e.id !== id));
-    if (selectedId === id) setSelectedId(entries.find((e) => e.id !== id)?.id ?? null);
+    setDraft(null);
+    if (stored?.id === id) setSelectedId(entries.find((e) => e.id !== id)?.id ?? null);
   }
 
   function toggleGroup(type: string) {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
-      next.has(type) ? next.delete(type) : next.add(type);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
       return next;
     });
   }
@@ -186,9 +248,7 @@ export default function StoryPage() {
   function addTag() {
     if (!tagInput.trim() || !selected) return;
     const tag = tagInput.trim().toLowerCase();
-    if (!selected.tags.includes(tag)) {
-      saveEntry({ tags: [...selected.tags, tag] });
-    }
+    if (!selected.tags.includes(tag)) saveEntry({ tags: [...selected.tags, tag] });
     setTagInput("");
   }
 
@@ -197,119 +257,247 @@ export default function StoryPage() {
     saveEntry({ tags: selected.tags.filter((t) => t !== tag) });
   }
 
-  function addAssetLink(targetType: AssetLink["targetType"], targetId: string) {
-    if (!selected) return;
-    if (selected.links.some((l) => l.targetId === targetId)) return;
-    saveEntry({ links: [...selected.links, { targetId, targetType }] });
-    setShowAssetLinker(false);
+  // ── [[ autocomplete ──
+  const acOptions = useMemo(() => {
+    if (!ac || !selected) return [];
+    const q = ac.query.toLowerCase();
+    return entries
+      .filter((e) => e.id !== selected.id && e.title.toLowerCase().includes(q))
+      .sort((a, b) => Number(!a.title.toLowerCase().startsWith(q)) - Number(!b.title.toLowerCase().startsWith(q)))
+      .slice(0, 8);
+  }, [ac, entries, selected]);
+
+  function updateAutocomplete(content: string, caret: number) {
+    const m = content.slice(0, caret).match(AUTOCOMPLETE);
+    if (!m) {
+      setAc(null);
+      return;
+    }
+    setAc((prev) => ({ query: m[1], start: caret - m[0].length, index: prev?.query === m[1] ? prev.index : 0 }));
   }
 
-  function removeAssetLink(targetId: string) {
-    if (!selected) return;
-    saveEntry({ links: selected.links.filter((l) => l.targetId !== targetId) });
+  function insertLink(title: string) {
+    const ta = textareaRef.current;
+    if (!ta || !ac || !selected) return;
+    const caret = ta.selectionStart;
+    const content = selected.content;
+    const after = content.slice(caret).startsWith("]]") ? content.slice(caret + 2) : content.slice(caret);
+    const next = `${content.slice(0, ac.start)}[[${title}]]${after}`;
+    const pos = ac.start + title.length + 4;
+    setDraft({ id: selected.id, content: next });
+    setAc(null);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+    });
   }
 
-  function renderContent(content: string) {
-    const parts = content.split(/(\[\[[^\]]+\]\])/g);
-    return parts.map((part, i) => {
+  function onEditorKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!ac || acOptions.length === 0) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const d = e.key === "ArrowDown" ? 1 : -1;
+      setAc({ ...ac, index: (ac.index + d + acOptions.length) % acOptions.length });
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      insertLink(acOptions[ac.index].title);
+    } else if (e.key === "Escape") {
+      setAc(null);
+    }
+  }
+
+  // ── preview ──
+  function renderLine(line: string, key: string) {
+    if (line.startsWith("## ")) {
+      return (
+        <strong key={key} className="block text-lg mt-4 mb-2" style={{ color: "var(--text-primary)" }}>
+          {renderInline(line.slice(3), key)}
+        </strong>
+      );
+    }
+    if (line.startsWith("# ")) {
+      return (
+        <strong key={key} className="block text-xl mt-4 mb-2" style={{ color: "var(--text-primary)" }}>
+          {renderInline(line.slice(2), key)}
+        </strong>
+      );
+    }
+    if (line.startsWith("- ")) {
+      return (
+        <span key={key} className="block pl-4">
+          • {renderInline(line.slice(2), key)}
+        </span>
+      );
+    }
+    return (
+      <span key={key} className="block min-h-[1.5em]">
+        {renderInline(line, key)}
+      </span>
+    );
+  }
+
+  function renderInline(text: string, key: string) {
+    return text.split(WIKI_SPLIT).map((part, i) => {
       const match = part.match(/^\[\[([^\]]+)\]\]$/);
-      if (match) {
-        const name = match[1];
-        const target = entries.find((e) => e.title.toLowerCase() === name.toLowerCase());
-        if (target) {
-          const meta = getTypeMeta(target.type);
-          return (
-            <button
-              key={i}
-              onClick={() => setSelectedId(target.id)}
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm font-medium transition-colors"
-              style={{ background: `${meta.color}20`, color: meta.color }}
-            >
-              <meta.icon className="w-3 h-3" />
-              {target.title}
-            </button>
-          );
-        }
+      if (!match) return <span key={`${key}-${i}`}>{part}</span>;
+      const { target: name, label } = parseWiki(match[1]);
+      const target = byTitle.get(name.toLowerCase());
+      if (target) {
+        const meta = getTypeMeta(target.type);
         return (
-          <span key={i} className="inline px-1 py-0.5 rounded text-sm" style={{ background: "var(--bg-hover)", color: "var(--red)" }}>
-            [[{name}]]
-          </span>
+          <button
+            key={`${key}-${i}`}
+            onClick={() => selectEntry(target.id)}
+            onMouseEnter={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setHover({ title: target.title, x: r.left, y: r.bottom + 6 });
+            }}
+            onMouseLeave={() => setHover(null)}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm font-medium transition-colors"
+            style={{ background: `${meta.color}20`, color: meta.color }}
+          >
+            <meta.icon className="w-3 h-3" />
+            {label}
+          </button>
         );
       }
-      return part.split("\n").map((line, li) => (
-        <span key={`${i}-${li}`}>
-          {li > 0 && <br />}
-          {line.startsWith("## ") ? (
-            <strong className="block text-lg mt-4 mb-2" style={{ color: "var(--text-primary)" }}>{line.slice(3)}</strong>
-          ) : line.startsWith("- ") ? (
-            <span className="block pl-4">• {line.slice(2)}</span>
-          ) : (
-            line
-          )}
-        </span>
-      ));
+      return (
+        <button
+          key={`${key}-${i}`}
+          onClick={() => createEntry(name, "note")}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-sm border border-dashed"
+          style={{ borderColor: "var(--red)", color: "var(--red)" }}
+          title={`No entry called "${name}" yet`}
+        >
+          <Plus className="w-3 h-3" />
+          Create &lsquo;{name}&rsquo;
+        </button>
+      );
     });
   }
 
-  // Build graph data from [[links]]
-  const graphData = useMemo(() => {
-    const nodes: { id: string; title: string; type: string; x: number; y: number }[] = [];
-    const edges: { from: string; to: string }[] = [];
-    const entryMap = new Map(entries.map((e) => [e.title.toLowerCase(), e]));
+  const hoverEntry = hover ? byTitle.get(hover.title.toLowerCase()) : undefined;
+  const hoverRelated = useMemo(
+    () => (hoverEntry ? getRelated(projectId, "story", hoverEntry.id) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hoverEntry, projectId, version]
+  );
+  const hoverSprite = hoverRelated.find((r) => r.type === "sprite" && r.thumbnail);
 
+  // ── backlinks (entries whose text mentions this one) ──
+  const backlinks = useMemo(() => {
+    if (!selected) return [];
+    const title = selected.title.trim().toLowerCase();
+    return entries
+      .filter((e) => e.id !== selected.id && wikiTargets(e.content).includes(title))
+      .map((e) => {
+        const line = e.content.split("\n").find((l) => wikiTargets(l).includes(title)) ?? "";
+        return { entry: e, context: line.replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_, t, a) => a || t).trim() };
+      });
+  }, [entries, selected]);
+
+  // ── graph ──
+  const graphData = useMemo(() => {
+    if (!showGraph) return { nodes: [], edges: [] };
+    type Node = { key: string; id: string; title: string; color: string; label: string; kind: "story" | "asset"; assetType?: keyof typeof ASSET_KINDS; x: number; y: number };
+    const nodes = new Map<string, Node>();
+    const edges = new Map<string, { from: string; to: string }>();
+    const addEdge = (a: string, b: string) => {
+      const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (a !== b) edges.set(k, { from: a, to: b });
+    };
+
+    const radius = Math.min(170, 60 + entries.length * 14);
     entries.forEach((entry, i) => {
       const angle = (2 * Math.PI * i) / Math.max(entries.length, 1);
-      const radius = Math.min(180, 60 + entries.length * 15);
-      nodes.push({
+      const meta = getTypeMeta(entry.type);
+      nodes.set(`story:${entry.id}`, {
+        key: `story:${entry.id}`,
         id: entry.id,
         title: entry.title,
-        type: entry.type,
-        x: 250 + Math.cos(angle) * radius,
-        y: 200 + Math.sin(angle) * radius,
+        color: meta.color,
+        label: meta.label,
+        kind: "story",
+        x: 300 + Math.cos(angle) * radius,
+        y: 240 + Math.sin(angle) * radius,
       });
-      const linkMatches = entry.content.matchAll(/\[\[([^\]]+)\]\]/g);
-      for (const m of linkMatches) {
-        const target = entryMap.get(m[1].toLowerCase());
-        if (target && target.id !== entry.id) {
-          edges.push({ from: entry.id, to: target.id });
-        }
-      }
     });
-    return { nodes, edges };
-  }, [entries]);
+
+    const assets: Node[] = [];
+    for (const entry of entries) {
+      for (const r of getRelated(projectId, "story", entry.id)) {
+        const key = `${r.type}:${r.id}`;
+        if (r.type !== "story" && !nodes.has(key)) {
+          const node: Node = { key, id: r.id, title: r.name, color: ASSET_KINDS[r.type].color, label: ASSET_KINDS[r.type].label, kind: "asset", assetType: r.type, x: 0, y: 0 };
+          nodes.set(key, node);
+          assets.push(node);
+        }
+        addEdge(`story:${entry.id}`, key);
+      }
+    }
+    const outer = radius + 80;
+    assets.forEach((n, i) => {
+      const angle = (2 * Math.PI * i) / Math.max(assets.length, 1) + Math.PI / 7;
+      n.x = 300 + Math.cos(angle) * outer;
+      n.y = 240 + Math.sin(angle) * outer;
+    });
+    return { nodes: [...nodes.values()], edges: [...edges.values()] };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, showGraph, projectId, version]);
 
   if (showGraph) {
+    const byKey = new Map(graphData.nodes.map((n) => [n.key, n]));
     return (
       <div className="h-full flex flex-col" style={{ background: "var(--bg-primary)" }}>
         <div className="h-12 flex items-center justify-between px-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Connection Graph</h2>
+          <h2 className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+            Connection Graph
+          </h2>
           <button onClick={() => setShowGraph(false)} className="p-1.5 rounded-lg" style={{ color: "var(--text-secondary)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex-1 flex items-center justify-center p-4">
-          <svg viewBox="0 0 500 400" className="w-full max-w-2xl" style={{ maxHeight: "70vh" }}>
-            {graphData.edges.map((edge, i) => {
-              const from = graphData.nodes.find((n) => n.id === edge.from);
-              const to = graphData.nodes.find((n) => n.id === edge.to);
-              if (!from || !to) return null;
-              return <line key={i} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="var(--border-hover)" strokeWidth="1.5" />;
-            })}
-            {graphData.nodes.map((node) => {
-              const meta = getTypeMeta(node.type);
-              return (
-                <g key={node.id} onClick={() => { setSelectedId(node.id); setShowGraph(false); }} className="cursor-pointer">
-                  <circle cx={node.x} cy={node.y} r="22" fill={`${meta.color}30`} stroke={meta.color} strokeWidth="1.5" />
-                  <text x={node.x} y={node.y + 3} textAnchor="middle" fill={meta.color} fontSize="9" fontWeight="600">
+        <div className="flex-1 flex items-center justify-center p-4 min-h-0">
+          {graphData.nodes.length === 0 ? (
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              No entries yet.
+            </p>
+          ) : (
+            <svg viewBox="0 0 600 480" className="w-full max-w-3xl" style={{ maxHeight: "75vh" }}>
+              {graphData.edges.map((edge) => {
+                const from = byKey.get(edge.from);
+                const to = byKey.get(edge.to);
+                if (!from || !to) return null;
+                return <line key={`${edge.from}|${edge.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="var(--border-hover)" strokeWidth="1.5" />;
+              })}
+              {graphData.nodes.map((node) => (
+                <g
+                  key={node.key}
+                  onClick={() => {
+                    if (node.kind === "story") {
+                      selectEntry(node.id);
+                      setShowGraph(false);
+                    } else if (node.assetType) {
+                      router.push(assetHref(projectId, node.assetType, node.id));
+                    }
+                  }}
+                  className="cursor-pointer"
+                >
+                  {node.kind === "story" ? (
+                    <circle cx={node.x} cy={node.y} r="22" fill={`${node.color}30`} stroke={node.color} strokeWidth="1.5" />
+                  ) : (
+                    <rect x={node.x - 18} y={node.y - 14} width="36" height="28" rx="6" fill={`${node.color}25`} stroke={node.color} strokeWidth="1.5" strokeDasharray="3 2" />
+                  )}
+                  <text x={node.x} y={node.y + 3} textAnchor="middle" fill={node.color} fontSize="9" fontWeight="600">
                     {node.title.length > 10 ? node.title.slice(0, 9) + "…" : node.title}
                   </text>
                   <text x={node.x} y={node.y + 36} textAnchor="middle" fill="var(--text-muted)" fontSize="8">
-                    {meta.label}
+                    {node.label}
                   </text>
                 </g>
-              );
-            })}
-          </svg>
+              ))}
+            </svg>
+          )}
         </div>
       </div>
     );
@@ -332,7 +520,15 @@ export default function StoryPage() {
                 style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
               />
             </div>
-            <button onClick={() => setShowGraph(true)} className="p-1.5 rounded-md" style={{ color: "var(--text-secondary)", background: "var(--bg-primary)", border: "1px solid var(--border)" }} title="View graph">
+            <button
+              onClick={() => {
+                flushDraft();
+                setShowGraph(true);
+              }}
+              className="p-1.5 rounded-md"
+              style={{ color: "var(--text-secondary)", background: "var(--bg-primary)", border: "1px solid var(--border)" }}
+              title="View graph"
+            >
               <Network className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -365,11 +561,13 @@ export default function StoryPage() {
               style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
             >
               {ENTRY_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
               ))}
             </select>
             <div className="flex gap-1.5">
-              <button onClick={createEntry} className="flex-1 py-1 rounded-md text-xs font-medium" style={{ background: "var(--accent)", color: "white" }}>
+              <button onClick={() => createEntry()} className="flex-1 py-1 rounded-md text-xs font-medium" style={{ background: "var(--accent)", color: "white" }}>
                 Create
               </button>
               <button onClick={() => setShowNewForm(false)} className="px-3 py-1 rounded-md text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -385,11 +583,7 @@ export default function StoryPage() {
             const collapsed = collapsedGroups.has(type.value);
             return (
               <div key={type.value}>
-                <button
-                  onClick={() => toggleGroup(type.value)}
-                  className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium"
-                  style={{ color: type.color }}
-                >
+                <button onClick={() => toggleGroup(type.value)} className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium" style={{ color: type.color }}>
                   {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   <type.icon className="w-3 h-3" />
                   {type.label}
@@ -399,11 +593,11 @@ export default function StoryPage() {
                   items.map((entry) => (
                     <button
                       key={entry.id}
-                      onClick={() => setSelectedId(entry.id)}
+                      onClick={() => selectEntry(entry.id)}
                       className="w-full text-left flex items-center gap-2 pl-8 pr-3 py-1.5 text-xs transition-colors"
                       style={{
-                        color: selectedId === entry.id ? "var(--text-primary)" : "var(--text-secondary)",
-                        background: selectedId === entry.id ? "var(--bg-hover)" : "transparent",
+                        color: stored?.id === entry.id ? "var(--text-primary)" : "var(--text-secondary)",
+                        background: stored?.id === entry.id ? "var(--bg-hover)" : "transparent",
                       }}
                     >
                       <span className="truncate">{entry.title}</span>
@@ -432,7 +626,7 @@ export default function StoryPage() {
               <input
                 type="text"
                 value={selected.title}
-                onChange={(e) => { saveEntry({ title: e.target.value }); }}
+                onChange={(e) => saveEntry({ title: e.target.value })}
                 className="text-lg font-semibold bg-transparent outline-none min-w-0"
                 style={{ color: "var(--text-primary)" }}
               />
@@ -445,23 +639,12 @@ export default function StoryPage() {
                 style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
               >
                 {ENTRY_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
                 ))}
               </select>
-              <button
-                onClick={() => setShowAssetLinker(true)}
-                className="p-1.5 rounded-md"
-                style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
-                title="Link asset"
-              >
-                <LinkIcon className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => deleteEntry(selected.id)}
-                className="p-1.5 rounded-md"
-                style={{ color: "var(--red)", border: "1px solid var(--border)" }}
-                title="Delete entry"
-              >
+              <button onClick={() => deleteEntry(selected.id)} className="p-1.5 rounded-md" style={{ color: "var(--red)", border: "1px solid var(--border)" }} title="Delete entry">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -489,51 +672,113 @@ export default function StoryPage() {
             />
           </div>
 
-          {/* Asset links */}
-          {selected.links.length > 0 && (
-            <div className="flex items-center gap-1.5 px-5 py-2 border-b flex-wrap" style={{ borderColor: "var(--border)" }}>
-              <LinkIcon className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
-              {selected.links.map((link) => (
-                <span key={link.targetId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ background: "var(--accent)15", color: "var(--accent)" }}>
-                  {link.targetType}:{link.targetId.slice(0, 6)}
-                  <button onClick={() => removeAssetLink(link.targetId)}>
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
           {/* Content area - side by side edit / preview */}
           <div className="flex-1 flex min-h-0">
-            <div className="flex-1 flex flex-col border-r" style={{ borderColor: "var(--border)" }}>
+            <div className="flex-1 flex flex-col border-r relative min-w-0" style={{ borderColor: "var(--border)" }}>
               <div className="px-5 py-1.5 text-[10px] font-medium flex items-center justify-between" style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
-                <span>EDIT (Markdown — use [[Entry Name]] to link)</span>
+                <span>EDIT (Markdown — type [[ to link an entry)</span>
                 {dirty && (
-                  <button onClick={() => saveEntry({ content: selected.content })} className="flex items-center gap-1 text-[10px]" style={{ color: "var(--accent)" }}>
+                  <button onClick={flushDraft} className="flex items-center gap-1 text-[10px]" style={{ color: "var(--accent)" }}>
                     <Save className="w-3 h-3" /> Save
                   </button>
                 )}
               </div>
               <textarea
+                ref={textareaRef}
                 value={selected.content}
                 onChange={(e) => {
-                  const updated = { ...selected, content: e.target.value, updatedAt: new Date().toISOString() };
-                  setEntries((prev) => prev.map((en) => (en.id === updated.id ? updated : en)));
-                  setDirty(true);
+                  setDraft({ id: selected.id, content: e.target.value });
+                  updateAutocomplete(e.target.value, e.target.selectionStart);
                 }}
-                onBlur={() => { if (dirty) saveEntry({ content: selected.content }); }}
+                onKeyDown={onEditorKeyDown}
+                onClick={(e) => updateAutocomplete(e.currentTarget.value, e.currentTarget.selectionStart)}
+                onBlur={() => {
+                  setTimeout(() => setAc(null), 150);
+                  flushDraft();
+                }}
                 className="flex-1 resize-none p-5 text-sm leading-relaxed outline-none font-mono"
                 style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}
-                placeholder="Write your entry content here. Use [[Entry Name]] to link to other entries…"
+                placeholder="Write your entry content here. Type [[ to link to other entries…"
               />
+              {ac && (
+                <div
+                  className="absolute left-5 right-5 bottom-4 z-20 rounded-lg shadow-xl py-1 max-h-60 overflow-y-auto"
+                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                >
+                  <div className="px-3 py-1 text-[10px] flex items-center justify-between" style={{ color: "var(--text-muted)" }}>
+                    <span>Link to entry{ac.query ? ` matching “${ac.query}”` : ""}</span>
+                    <span className="flex items-center gap-1">
+                      <CornerDownLeft className="w-3 h-3" /> insert
+                    </span>
+                  </div>
+                  {acOptions.length === 0 ? (
+                    <div className="px-3 py-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                      No match — finish with ]] and click it in the preview to create it.
+                    </div>
+                  ) : (
+                    acOptions.map((opt, i) => {
+                      const meta = getTypeMeta(opt.type);
+                      return (
+                        <button
+                          key={opt.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            insertLink(opt.title);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left"
+                          style={{ background: i === ac.index ? "var(--bg-hover)" : "transparent", color: "var(--text-primary)" }}
+                        >
+                          <meta.icon className="w-3 h-3" style={{ color: meta.color }} />
+                          <span className="truncate">{opt.title}</span>
+                          <span className="ml-auto" style={{ color: "var(--text-muted)" }}>
+                            {meta.label}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col min-w-0">
               <div className="px-5 py-1.5 text-[10px] font-medium" style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
                 PREVIEW
               </div>
-              <div className="flex-1 overflow-y-auto p-5 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                {renderContent(selected.content)}
+              <div className="flex-1 overflow-y-auto">
+                <div className="p-5 text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                  {selected.content.split("\n").map((line, i) => renderLine(line, String(i)))}
+                </div>
+                <div className="px-5 py-4 border-t space-y-4" style={{ borderColor: "var(--border)" }}>
+                  <LinkedAssets projectId={projectId} type="story" id={selected.id} layout="panel" />
+                  {backlinks.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                        Mentioned in
+                      </div>
+                      {backlinks.map(({ entry, context }) => {
+                        const meta = getTypeMeta(entry.type);
+                        return (
+                          <button
+                            key={entry.id}
+                            onClick={() => selectEntry(entry.id)}
+                            className="w-full text-left px-2.5 py-1.5 rounded-md text-xs hover:bg-[var(--bg-hover)]"
+                            style={{ border: "1px solid var(--border)" }}
+                          >
+                            <span className="flex items-center gap-1.5 font-medium" style={{ color: meta.color }}>
+                              <meta.icon className="w-3 h-3" />
+                              {entry.title}
+                            </span>
+                            {context && (
+                              <span className="block mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
+                                {context}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -547,47 +792,41 @@ export default function StoryPage() {
         </div>
       )}
 
-      {/* Asset linker modal */}
-      {showAssetLinker && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-96 rounded-xl border p-5" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Link Asset</h3>
-              <button onClick={() => setShowAssetLinker(false)}><X className="w-4 h-4" style={{ color: "var(--text-secondary)" }} /></button>
-            </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {ASSET_TYPES.map((assetType) => {
-                const items = storage.getAll(assetType.collection, projectId);
-                if (items.length === 0) return null;
-                return (
-                  <div key={assetType.value}>
-                    <div className="text-[10px] font-medium px-1 py-1" style={{ color: "var(--text-muted)" }}>{assetType.label.toUpperCase()}</div>
-                    {items.map((item) => {
-                      const id = (item as { id: string }).id;
-                      const name = (item as { name: string }).name;
-                      return (
-                        <button
-                          key={id}
-                          onClick={() => addAssetLink(assetType.value, id)}
-                          className="w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors"
-                          style={{ color: "var(--text-secondary)" }}
-                          onMouseOver={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
-                        >
-                          {name}
-                        </button>
-                      );
-                    })}
+      {/* Wiki link hover card */}
+      {hover && hoverEntry && (
+        <div
+          className="fixed z-50 w-72 rounded-lg shadow-xl p-3 pointer-events-none"
+          style={{ left: Math.min(hover.x, (typeof window !== "undefined" ? window.innerWidth : 1200) - 300), top: hover.y, background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+        >
+          {(() => {
+            const meta = getTypeMeta(hoverEntry.type);
+            const excerpt = hoverEntry.content.replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_, t, a) => a || t).replace(/[#*_>`]/g, "").replace(/\s+/g, " ").trim();
+            return (
+              <div className="flex gap-3">
+                {hoverSprite?.thumbnail && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={hoverSprite.thumbnail} alt="" className="w-12 h-12 shrink-0 rounded" style={{ imageRendering: "pixelated", background: "var(--bg-primary)" }} />
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                    <meta.icon className="w-3.5 h-3.5 shrink-0" style={{ color: meta.color }} />
+                    <span className="truncate">{hoverEntry.title}</span>
                   </div>
-                );
-              })}
-              {ASSET_TYPES.every((at) => storage.getAll(at.collection, projectId).length === 0) && (
-                <p className="text-xs text-center py-4" style={{ color: "var(--text-muted)" }}>
-                  No assets in this project yet. Create sprites, sounds, or other assets first.
-                </p>
-              )}
-            </div>
-          </div>
+                  <div className="text-[10px] mb-1" style={{ color: meta.color }}>
+                    {meta.label}
+                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                    {excerpt ? (excerpt.length > 160 ? excerpt.slice(0, 160) + "…" : excerpt) : "No content yet."}
+                  </p>
+                  {hoverRelated.filter((r) => r.type !== "story").length > 0 && (
+                    <p className="text-[10px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+                      Linked: {hoverRelated.filter((r) => r.type !== "story").map((r) => r.name).join(", ")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

@@ -33,6 +33,9 @@ import {
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
+import { getLoadedImage, loadImage } from "@/lib/pixels";
+import { useOpenParam } from "@/hooks/useStorage";
+import { LinkedAssets } from "@/components/LinkedAssets";
 import type { Sprite, SpriteFrame } from "@/types";
 
 // ─── types ───────────────────────────────────────────────────────────
@@ -176,19 +179,21 @@ function imageDataToBase64(data: ImageData): string {
   return c.toDataURL();
 }
 
-function base64ToImageData(b64: string, w: number, h: number): Promise<ImageData> {
-  return new Promise((resolve) => {
-    const img = new window.Image();
-    img.onload = () => {
-      const c = document.createElement("canvas");
-      c.width = w;
-      c.height = h;
-      const ctx = c.getContext("2d")!;
-      ctx.drawImage(img, 0, 0);
-      resolve(ctx.getImageData(0, 0, w, h));
-    };
-    img.src = b64;
-  });
+async function base64ToImageData(b64: string, w: number, h: number): Promise<ImageData> {
+  const img = await loadImage(b64);
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d")!;
+  ctx.drawImage(img, 0, 0);
+  return ctx.getImageData(0, 0, w, h);
+}
+
+async function drawLayers(ctx: CanvasRenderingContext2D, layers: Layer[], x = 0, y = 0) {
+  for (const layer of layers) {
+    if (!layer.visible) continue;
+    ctx.drawImage(await loadImage(layer.pixels), x, y);
+  }
 }
 
 function blankBase64(w: number, h: number): string {
@@ -281,7 +286,11 @@ export default function PixelArtPage() {
 
   // ── sprite list ──
   const [sprites, setSprites] = useState<Sprite[]>([]);
+  const [spritesLoaded, setSpritesLoaded] = useState(false);
   const [activeSpriteId, setActiveSpriteId] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [imageTick, setImageTick] = useState(0);
+  const requestRedraw = useCallback(() => setImageTick((t) => t + 1), []);
 
   // ── canvas size ──
   const [canvasW, setCanvasW] = useState(32);
@@ -294,7 +303,7 @@ export default function PixelArtPage() {
 
   // ── tool state ──
   const [tool, setTool] = useState<Tool>("pencil");
-  const [color, setColor] = useState("#000000");
+  const [color, setColor] = useState("#ffffff");
   const [palette, setPalette] = useState<string[]>(DEFAULT_PALETTE);
   const [zoom, setZoom] = useState(12);
   const [showGrid, setShowGrid] = useState(true);
@@ -322,6 +331,7 @@ export default function PixelArtPage() {
   useEffect(() => {
     const list = storage.getAll("sprites", projectId);
     setSprites(list);
+    setSpritesLoaded(true);
   }, [projectId]);
 
   // ── build initial blank frame ──
@@ -362,8 +372,10 @@ export default function PixelArtPage() {
 
     const loaded: FrameData[] = [];
     for (const sf of sprite.frames) {
-      const layer: Layer = { id: uuid(), name: "Layer 1", visible: true, pixels: sf.pixels };
-      loaded.push({ id: sf.id, layers: [layer], duration: sf.duration });
+      const layers: Layer[] = sf.layers?.length
+        ? sf.layers.map((l) => ({ id: l.id, name: l.name, visible: l.visible, pixels: l.pixels }))
+        : [{ id: uuid(), name: "Layer 1", visible: true, pixels: sf.pixels }];
+      loaded.push({ id: sf.id, layers, duration: sf.duration });
     }
     if (loaded.length === 0) loaded.push(makeBlankFrame(sprite.width, sprite.height));
     setFrames(loaded);
@@ -374,14 +386,24 @@ export default function PixelArtPage() {
     pushHistory(loaded, 0, 0);
   }
 
+  useOpenParam((id) => {
+    const s = storage.getById("sprites", id, projectId);
+    if (s) loadSprite(s);
+  }, spritesLoaded);
+
   // ── save sprite ──
-  function saveSprite() {
+  async function saveSprite() {
+    if (saveState === "saving") return;
+    setSaveState("saving");
     const name = newName.trim() || "Untitled";
-    const spriteFrames: SpriteFrame[] = frames.map((f) => ({
-      id: f.id,
-      pixels: compositeFrame(f),
-      duration: f.duration,
-    }));
+    const spriteFrames: SpriteFrame[] = await Promise.all(
+      frames.map(async (f) => ({
+        id: f.id,
+        pixels: await compositeFrame(f),
+        duration: f.duration,
+        layers: f.layers.map((l) => ({ id: l.id, name: l.name, visible: l.visible, pixels: l.pixels })),
+      }))
+    );
     const sprite: Sprite = {
       id: activeSpriteId || uuid(),
       projectId,
@@ -399,20 +421,24 @@ export default function PixelArtPage() {
     storage.save("sprites", sprite, projectId);
     setActiveSpriteId(sprite.id);
     setSprites(storage.getAll("sprites", projectId));
+    setSaveState("saved");
+    setTimeout(() => setSaveState("idle"), 1500);
   }
 
-  // ── composite all visible layers into one base64 ──
-  function compositeFrame(frame: FrameData): string {
+  function deleteSprite(id: string) {
+    const s = sprites.find((x) => x.id === id);
+    if (!confirm(`Delete sprite "${s?.name ?? "Untitled"}"?`)) return;
+    storage.delete("sprites", id, projectId);
+    setSprites(storage.getAll("sprites", projectId));
+    if (activeSpriteId === id) setActiveSpriteId(null);
+  }
+
+  // ── composite all visible layers into one PNG data URL ──
+  async function compositeFrame(frame: FrameData): Promise<string> {
     const c = document.createElement("canvas");
     c.width = canvasW;
     c.height = canvasH;
-    const ctx = c.getContext("2d")!;
-    for (const layer of frame.layers) {
-      if (!layer.visible) continue;
-      const img = new window.Image();
-      img.src = layer.pixels;
-      ctx.drawImage(img, 0, 0);
-    }
+    await drawLayers(c.getContext("2d")!, frame.layers);
     return c.toDataURL();
   }
 
@@ -491,8 +517,8 @@ export default function PixelArtPage() {
         ctx.globalAlpha = 0.25;
         for (const layer of prev.layers) {
           if (!layer.visible) continue;
-          const img = new window.Image();
-          img.src = layer.pixels;
+          const img = getLoadedImage(layer.pixels, requestRedraw);
+          if (!img) continue;
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(img, 0, 0, canvasW, canvasH, 0, 0, pw, ph);
         }
@@ -503,8 +529,8 @@ export default function PixelArtPage() {
     // layers
     for (const layer of frame.layers) {
       if (!layer.visible) continue;
-      const img = new window.Image();
-      img.src = layer.pixels;
+      const img = getLoadedImage(layer.pixels, requestRedraw);
+      if (!img) continue;
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, 0, 0, canvasW, canvasH, 0, 0, pw, ph);
     }
@@ -536,7 +562,9 @@ export default function PixelArtPage() {
         ctx.stroke();
       }
     }
-  }, [frames, activeFrame, previewFrame, playing, canvasW, canvasH, zoom, showGrid, onionSkin]);
+    // imageTick: redraw once layer images finish decoding
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frames, activeFrame, previewFrame, playing, canvasW, canvasH, zoom, showGrid, onionSkin, requestRedraw, imageTick]);
 
   useEffect(() => { renderCanvas(); }, [renderCanvas]);
 
@@ -770,41 +798,27 @@ export default function PixelArtPage() {
   }
 
   // ── export ──
-  function exportPNG() {
+  async function exportPNG() {
     const c = document.createElement("canvas");
     c.width = canvasW;
     c.height = canvasH;
-    const ctx = c.getContext("2d")!;
-    const frame = frames[activeFrame];
-    for (const layer of frame.layers) {
-      if (!layer.visible) continue;
-      const img = new window.Image();
-      img.src = layer.pixels;
-      ctx.drawImage(img, 0, 0);
-    }
+    await drawLayers(c.getContext("2d")!, frames[activeFrame].layers);
     const a = document.createElement("a");
     a.href = c.toDataURL("image/png");
     a.download = `${newName || "sprite"}_frame${activeFrame}.png`;
     a.click();
   }
 
-  function exportSpriteSheet() {
+  async function exportSpriteSheet() {
     const cols = Math.ceil(Math.sqrt(frames.length));
     const rows = Math.ceil(frames.length / cols);
     const c = document.createElement("canvas");
     c.width = canvasW * cols;
     c.height = canvasH * rows;
     const ctx = c.getContext("2d")!;
-    frames.forEach((frame, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      for (const layer of frame.layers) {
-        if (!layer.visible) continue;
-        const img = new window.Image();
-        img.src = layer.pixels;
-        ctx.drawImage(img, col * canvasW, row * canvasH);
-      }
-    });
+    for (let i = 0; i < frames.length; i++) {
+      await drawLayers(ctx, frames[i].layers, (i % cols) * canvasW, Math.floor(i / cols) * canvasH);
+    }
     const a = document.createElement("a");
     a.href = c.toDataURL("image/png");
     a.download = `${newName || "sprite"}_sheet.png`;
@@ -866,7 +880,14 @@ export default function PixelArtPage() {
           <button onClick={undo} style={btnStyle()} title="Undo (Ctrl+Z)"><Undo2 className="w-4 h-4" /></button>
           <button onClick={redo} style={btnStyle()} title="Redo (Ctrl+Y)"><Redo2 className="w-4 h-4" /></button>
           <div style={{ width: 1, height: 20, background: "var(--border)", margin: "0 4px" }} />
-          <button onClick={saveSprite} style={btnStyle()} title="Save (Ctrl+S)"><Save className="w-4 h-4" /></button>
+          <button
+            onClick={saveSprite}
+            style={{ ...btnStyle(saveState === "saved"), padding: "6px 8px", gap: 4, display: "flex", alignItems: "center" }}
+            title="Save (Ctrl+S)"
+          >
+            <Save className="w-4 h-4" />
+            <span className="text-xs">{saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}</span>
+          </button>
           <button onClick={exportPNG} style={btnStyle()} title="Export frame as PNG"><Download className="w-4 h-4" /></button>
           <button onClick={exportSpriteSheet} style={btnStyle()} title="Export sprite sheet"><ImageIcon className="w-4 h-4" /></button>
         </div>
@@ -924,21 +945,36 @@ export default function PixelArtPage() {
             )}
             <div className="space-y-0.5 max-h-32 overflow-y-auto">
               {sprites.map((s) => (
-                <button
+                <div
                   key={s.id}
+                  className="group flex items-center gap-1.5 w-full text-xs px-2 py-1 rounded cursor-pointer"
                   onClick={() => loadSprite(s)}
-                  className="block w-full text-left text-xs px-2 py-1 rounded truncate"
                   style={{
                     color: activeSpriteId === s.id ? "var(--text-primary)" : "var(--text-secondary)",
                     background: activeSpriteId === s.id ? "var(--bg-hover)" : "transparent",
                   }}
                 >
-                  {s.name}
-                </button>
+                  {s.frames[0]?.pixels && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.frames[0].pixels} alt="" className="w-4 h-4 shrink-0" style={{ imageRendering: "pixelated" }} />
+                  )}
+                  <span className="flex-1 truncate">{s.name}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteSprite(s.id); }}
+                    className="opacity-0 group-hover:opacity-100 shrink-0"
+                    style={{ color: "var(--red)" }}
+                    title="Delete sprite"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               ))}
               {sprites.length === 0 && (
                 <div className="text-xs py-1" style={{ color: "var(--text-muted)" }}>No sprites yet</div>
               )}
+            </div>
+            <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+              <LinkedAssets projectId={projectId} type="sprite" id={activeSpriteId} />
             </div>
           </div>
 
