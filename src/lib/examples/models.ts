@@ -1,7 +1,10 @@
 import { createGrid, voxelIndex, type Vec3, type VoxelGrid } from "../voxels/grid";
 import { encodeVoxels } from "../voxels/codec";
 import { renderThumbnail } from "../voxels/thumbnail";
+import type { VoxelModel } from "@/types";
 import type { ExampleContext, ExampleModule } from "./types";
+
+type ExampleModel = Omit<VoxelModel, "projectId" | "createdAt" | "updatedAt">;
 
 // Same hex values as the example sprites (art.ts) and the meadow palette (levels.ts).
 const SPRITE_COLORS: Record<string, string> = {
@@ -101,7 +104,7 @@ const centredSlices = (slices: string[][], size: number): string[][] => {
   });
 };
 
-function model(ctx: ExampleContext, slug: string, name: string, size: number, layers: string[][], palette: Record<string, string>) {
+function model(ctx: ExampleContext, slug: string, name: string, size: number, layers: string[][], palette: Record<string, string>): ExampleModel {
   const used = Object.keys(palette).filter((char) => layers.some((rows) => rows.some((row) => row.includes(char))));
   const key = Object.fromEntries(used.map((char, index) => [char, index + 1]));
   const colors = used.map((char) => palette[char]);

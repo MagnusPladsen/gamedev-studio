@@ -74,6 +74,7 @@ function marchVoxels(origin: Vec3, dir: Vec3, grid: VoxelGrid, entry: BoxEntry):
 }
 
 export function raycastGrid(origin: Vec3, dir: Vec3, grid: VoxelGrid): RayHit | null {
+  if (!dir.every(Number.isFinite) || dir.every((component) => component === 0)) return null;
   const entry = intersectGridBox(origin, dir, grid.size);
   if (!entry) return null;
   return marchVoxels(origin, dir, grid, entry) ?? groundHit(origin, dir, grid.size);

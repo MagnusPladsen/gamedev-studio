@@ -18,6 +18,13 @@ describe("raycastGrid", () => {
     expect(hit).toEqual({ cell: null, normal: [0, 1, 0], place: [0, 0, 0] });
   });
 
+  it("returns null for a zero or non-finite direction", () => {
+    const grid = setCells(createGrid([4, 4, 4]), [[1, 1, 1]], 1);
+    expect(raycastGrid([1.5, 1.5, 1.5], [0, 0, 0], grid)).toBeNull();
+    expect(raycastGrid([1.5, 1.5, 1.5], [NaN, 0, 0], grid)).toBeNull();
+    expect(raycastGrid([1.5, 1.5, 1.5], [0, Infinity, 0], grid)).toBeNull();
+  });
+
   it("misses when pointing away", () => {
     expect(raycastGrid([0.5, 10, 0.5], [0, 1, 0], createGrid([4, 4, 4]))).toBeNull();
   });

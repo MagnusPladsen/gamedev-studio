@@ -41,6 +41,7 @@ const TOOL_BY_KEY = Object.fromEntries(
   (Object.keys(TOOL_META) as VoxelTool[]).map((tool) => [TOOL_META[tool].key.toLowerCase(), tool])
 ) as Record<string, VoxelTool>;
 const NO_SYMMETRY: Symmetry = { x: false, y: false, z: false };
+const EXPORT_ERROR_MS = 6000;
 const PLACEHOLDER_GRID: VoxelGrid = createGrid([DEFAULT_GRID_SIZE, DEFAULT_GRID_SIZE, DEFAULT_GRID_SIZE]);
 
 function getNextModelName(models: VoxelModel[]): string {
@@ -92,7 +93,7 @@ function UnsupportedNotice(): React.JSX.Element {
         <p className="text-sm text-center" style={{ color: "var(--text-secondary)" }}>
           This browser can&apos;t show 3D here because WebGL 2 is off or missing. Try another browser, or use Blender.
         </p>
-        <BlenderCard variant="full" />
+        <BlenderCard />
       </div>
     </div>
   );
@@ -120,9 +121,16 @@ export default function VoxelsPage(): React.JSX.Element {
   const [isUnsupported, setIsUnsupported] = useState(false);
   const [isSpriteDialogOpen, setIsSpriteDialogOpen] = useState(false);
   const [isModelsPanelOpen, setIsModelsPanelOpen] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const viewportApiRef = useRef<VoxelViewportApi | null>(null);
 
-  const exportItems = useVoxelExports(doc, viewportApiRef);
+  useEffect(() => {
+    if (!exportError) return;
+    const timer = setTimeout(() => setExportError(null), EXPORT_ERROR_MS);
+    return () => clearTimeout(timer);
+  }, [exportError]);
+
+  const exportItems = useVoxelExports(doc, viewportApiRef, setExportError);
   const grid = doc?.grid ?? PLACEHOLDER_GRID;
   const colors = doc?.colors ?? FALLBACK_COLORS;
   const activeColorValue = Math.max(1, Math.min(colorValue, colors.length));
@@ -137,7 +145,7 @@ export default function VoxelsPage(): React.JSX.Element {
   });
 
   function selectTool(next: VoxelTool): void {
-    strokes.cancelBox();
+    strokes.reset();
     setTool(next);
   }
   useEditorKeys(selectTool, editor.flush);
@@ -255,9 +263,15 @@ export default function VoxelsPage(): React.JSX.Element {
           <UndoRedoButtons history={editor.history} />
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
           {doc && <SaveIndicator state={editor.saveState} />}
-<ExportMenu disabled={!doc} items={exportItems} />
+          <ExportMenu disabled={!doc} items={exportItems} />
         </div>
       </div>
+
+      {exportError && (
+        <p className="shrink-0 px-3 py-1.5 text-xs" role="alert" style={{ color: "var(--red)" }}>
+          {exportError}
+        </p>
+      )}
 
       {isModelsPanelOpen && (
         <div className="md:hidden shrink-0 max-h-[50dvh] overflow-y-auto border-b" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>

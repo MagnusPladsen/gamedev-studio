@@ -37,7 +37,7 @@ export function VoxelEmptyState({ hasModels, onNew, onFromSprite }: Props): Reac
             From sprite
           </button>
         </div>
-        <BlenderCard variant="full" />
+        <BlenderCard />
       </div>
     </div>
   );

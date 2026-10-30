@@ -65,17 +65,8 @@ function FullText(): React.JSX.Element {
   );
 }
 
-function CompactText(): React.JSX.Element {
-  return (
-    <p className="text-xs pr-6" style={{ color: "var(--text-secondary)" }}>
-      <strong style={{ color: "var(--text-primary)" }}>Open in Blender (free)</strong> — export .glb, then{" "}
-      <em>File → Import → glTF 2.0</em> in <ExternalLink href={BLENDER_URL}>Blender</ExternalLink>.
-    </p>
-  );
-}
-
 /** Recommends Blender for anything beyond voxels. Dismissible; the choice is remembered in this browser. */
-export function BlenderCard({ variant }: { variant: "full" | "compact" }): React.JSX.Element | null {
+export function BlenderCard(): React.JSX.Element | null {
   const isDismissed = useSyncExternalStore(subscribe, readDismissed, () => false);
   if (isDismissed) return null;
   return (
@@ -83,8 +74,8 @@ export function BlenderCard({ variant }: { variant: "full" | "compact" }): React
       className="relative flex gap-3 rounded-lg p-3 text-left"
       style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderLeft: "3px solid var(--accent)" }}
     >
-      {variant === "full" && <Box className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />}
-      <div className="min-w-0">{variant === "full" ? <FullText /> : <CompactText />}</div>
+      <Box className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "var(--accent)" }} />
+      <div className="min-w-0"><FullText /></div>
       <button
         onClick={dismissCard}
         className="absolute top-2 right-2 p-1 rounded"

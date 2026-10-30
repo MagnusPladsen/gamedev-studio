@@ -165,7 +165,8 @@ export function useVoxelStrokes(options: Options): VoxelStrokes {
     const stroke = strokeRef.current;
     strokeRef.current = null;
     setLiveGrid(null);
-    if (stroke && stroke.live !== stroke.base) latest.current.onCommit(stroke.live);
+    const isBaseUnchanged = stroke && latest.current.grid === stroke.base;
+    if (stroke && isBaseUnchanged && stroke.live !== stroke.base) latest.current.onCommit(stroke.live);
   }
 
   function cancelStroke(): void {

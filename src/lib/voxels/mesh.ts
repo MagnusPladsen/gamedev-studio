@@ -1,4 +1,4 @@
-import { getVoxel, type Vec3, type VoxelGrid } from "./grid";
+import type { Vec3, VoxelGrid } from "./grid";
 import { hexToRgb } from "./colors";
 
 export const EXPORT_SCALE = 0.1;
@@ -27,17 +27,15 @@ function buildMask(grid: VoxelGrid, axis: number, direction: 1 | -1, slice: numb
   const u = (axis + 1) % 3;
   const v = (axis + 2) % 3;
   const [width, height] = [grid.size[u], grid.size[v]];
+  const strides: Vec3 = [1, grid.size[0], grid.size[0] * grid.size[1]];
+  const neighbourSlice = slice + direction;
+  const neighbourOffset = neighbourSlice >= 0 && neighbourSlice < grid.size[axis] ? direction * strides[axis] : 0;
   const mask = new Uint8Array(width * height);
-  const position: Vec3 = [0, 0, 0];
   for (let j = 0; j < height; j++) {
     for (let i = 0; i < width; i++) {
-      position[axis] = slice;
-      position[u] = i;
-      position[v] = j;
-      const value = getVoxel(grid, position[0], position[1], position[2]);
-      position[axis] = slice + direction;
-      const neighbour = getVoxel(grid, position[0], position[1], position[2]);
-      mask[i + j * width] = neighbour === 0 ? value : 0;
+      const index = slice * strides[axis] + i * strides[u] + j * strides[v];
+      const neighbour = neighbourOffset === 0 ? 0 : grid.data[index + neighbourOffset];
+      mask[i + j * width] = neighbour === 0 ? grid.data[index] : 0;
     }
   }
   return mask;

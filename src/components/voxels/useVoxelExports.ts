@@ -11,6 +11,7 @@ import type { VoxelViewportApi } from "./VoxelViewport";
 import { BLENDER_MENU_DESCRIPTION, BLENDER_URL } from "./BlenderCard";
 
 const EMPTY_DESCRIPTION = "Add some voxels first";
+export const GLB_EXPORT_ERROR = "Couldn't export the .glb. Please try again.";
 
 function buildModelMesh(grid: VoxelGrid, colors: string[]): ReturnType<typeof buildMesh> {
   return buildMesh(greedyQuads(grid), colors, grid.size);
@@ -42,14 +43,16 @@ async function downloadPng(getSnapshot: () => string | null, base: string): Prom
 export function useVoxelExports(
   doc: Pick<VoxelDoc, "grid" | "colors" | "name"> | null,
   viewportApiRef: RefObject<VoxelViewportApi | null>,
+  onError: (message: string) => void,
 ): ExportItem[] {
   if (!doc) return [];
   const { grid, colors } = doc;
   const base = exportFileBase(doc.name);
   const isEmpty = countVoxels(grid) === 0;
+  const exportGlbSafely = (): Promise<void> => downloadGlb(grid, colors, base).catch(() => onError(GLB_EXPORT_ERROR));
   const describe = (text: string): string => (isEmpty ? EMPTY_DESCRIPTION : text);
   return [
-    { label: "3D model (.glb)", description: describe("For Blender, Godot, Unity and the web"), disabled: isEmpty, onClick: () => downloadGlb(grid, colors, base) },
+    { label: "3D model (.glb)", description: describe("For Blender, Godot, Unity and the web"), disabled: isEmpty, onClick: exportGlbSafely },
     { label: "OBJ + MTL", description: describe("Two files: the shape and its colours"), disabled: isEmpty, onClick: () => downloadObj(grid, colors, base) },
     { label: "MagicaVoxel (.vox)", description: describe("Opens in MagicaVoxel"), disabled: isEmpty, onClick: () => downloadVox(grid, colors, base) },
     { label: "Image (.png)", description: describe("The current view"), disabled: isEmpty, onClick: () => downloadPng(() => viewportApiRef.current?.snapshotPng() ?? null, base) },
