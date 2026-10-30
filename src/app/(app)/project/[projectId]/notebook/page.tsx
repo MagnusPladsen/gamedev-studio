@@ -24,7 +24,7 @@ import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
 import { assetHref } from "@/lib/assets";
 import { registerAutosaveFlush } from "@/lib/autosave-registry";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { useHistory } from "@/hooks/useHistory";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
@@ -490,6 +490,7 @@ export default function NotebookPage() {
   );
 
   useOpenParam((id) => select(id));
+  useTrackOpenAsset(draft?.id ? { type: "note", id: draft?.id } : null);
 
   function onListClick(e: React.MouseEvent<HTMLButtonElement>) {
     const id = e.currentTarget.dataset.noteId;
@@ -709,45 +710,45 @@ export default function NotebookPage() {
             )}
           </div>
           <div className="flex gap-1.5">
-          <div className="relative flex-1">
-            <div className="flex">
-              <button
-                onClick={() => createNote("blank")}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-l-lg text-xs font-medium"
-                style={{ background: ACCENT, color: "#1a2e05" }}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                New note
-              </button>
-              <button
-                onClick={() => setTemplateMenu((v) => !v)}
-                className="px-2 rounded-r-lg"
-                style={{ background: ACCENT, color: "#1a2e05", borderLeft: "1px solid rgba(26,46,5,0.25)" }}
-                title="Start from a template"
-                aria-label="Templates"
-              >
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {templateMenu && (
-              <div className="absolute z-30 top-full left-0 right-0 mt-1 p-1 rounded-lg shadow-xl" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <div className="text-[10px] uppercase tracking-wide px-2 py-1" style={{ color: "var(--text-muted)" }}>
-                  Start from
-                </div>
-                {TEMPLATES.map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => createNote(t.key)}
-                    className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-[var(--bg-hover)]"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+            <div className="relative flex-1">
+              <div className="flex">
+                <button
+                  onClick={() => createNote("blank")}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-l-lg text-xs font-medium"
+                  style={{ background: ACCENT, color: "#1a2e05" }}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  New note
+                </button>
+                <button
+                  onClick={() => setTemplateMenu((v) => !v)}
+                  className="px-2 rounded-r-lg"
+                  style={{ background: ACCENT, color: "#1a2e05", borderLeft: "1px solid rgba(26,46,5,0.25)" }}
+                  title="Start from a template"
+                  aria-label="Templates"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
               </div>
-            )}
-          </div>
-          <PasteButton type="note" />
+              {templateMenu && (
+                <div className="absolute z-30 top-full left-0 right-0 mt-1 p-1 rounded-lg shadow-xl" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+                  <div className="text-[10px] uppercase tracking-wide px-2 py-1" style={{ color: "var(--text-muted)" }}>
+                    Start from
+                  </div>
+                  {TEMPLATES.map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => createNote(t.key)}
+                      className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-[var(--bg-hover)]"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <PasteButton type="note" />
           </div>
         </div>
 
@@ -773,39 +774,39 @@ export default function NotebookPage() {
                   const active = draft?.id === n.id;
                   return (
                     <div key={n.id} className="relative">
-                    <button
-                      {...assetTriggerProps({ type: "note", id: n.id })}
-                      data-note-id={n.id}
-                      onClick={onListClick}
-                      className="w-full text-left px-2.5 max-md:pr-9 py-2 rounded-lg mb-0.5 transition-colors hover:bg-[var(--bg-hover)]"
-                      style={{ background: active ? "var(--bg-hover)" : undefined, boxShadow: active ? `inset 2px 0 0 ${ACCENT}` : undefined }}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm truncate flex-1" style={{ color: "var(--text-primary)" }}>
-                          {n.title || "Untitled note"}
-                        </span>
-                        {p.total > 0 && (
-                          <span
-                            className="text-[10px] px-1.5 rounded-full shrink-0 tabular-nums"
-                            style={{
-                              background: p.done === p.total ? "rgba(163,230,53,0.15)" : "var(--bg-card)",
-                              color: p.done === p.total ? ACCENT : "var(--text-secondary)",
-                            }}
-                          >
-                            {p.done}/{p.total}
+                      <button
+                        {...assetTriggerProps({ type: "note", id: n.id })}
+                        data-note-id={n.id}
+                        onClick={onListClick}
+                        className="w-full text-left px-2.5 max-md:pr-9 py-2 rounded-lg mb-0.5 transition-colors hover:bg-[var(--bg-hover)]"
+                        style={{ background: active ? "var(--bg-hover)" : undefined, boxShadow: active ? `inset 2px 0 0 ${ACCENT}` : undefined }}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm truncate flex-1" style={{ color: "var(--text-primary)" }}>
+                            {n.title || "Untitled note"}
                           </span>
-                        )}
+                          {p.total > 0 && (
+                            <span
+                              className="text-[10px] px-1.5 rounded-full shrink-0 tabular-nums"
+                              style={{
+                                background: p.done === p.total ? "rgba(163,230,53,0.15)" : "var(--bg-card)",
+                                color: p.done === p.total ? ACCENT : "var(--text-secondary)",
+                              }}
+                            >
+                              {p.done}/{p.total}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
+                          {excerpt(n.content)}
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                          {relativeTime(n.updatedAt)}
+                        </div>
+                      </button>
+                      <div className="md:hidden absolute right-1 top-1/2 -translate-y-1/2">
+                        <AssetMenuButton asset={{ type: "note", id: n.id }} label={n.title || "Untitled note"} />
                       </div>
-                      <div className="text-xs truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
-                        {excerpt(n.content)}
-                      </div>
-                      <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                        {relativeTime(n.updatedAt)}
-                      </div>
-                    </button>
-                    <div className="md:hidden absolute right-1 top-1/2 -translate-y-1/2">
-                      <AssetMenuButton asset={{ type: "note", id: n.id }} label={n.title || "Untitled note"} />
-                    </div>
                     </div>
                   );
                 })}

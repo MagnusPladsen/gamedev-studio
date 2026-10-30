@@ -30,7 +30,7 @@ import Link from "next/link";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
 import type { Diagram, DiagramNode, DiagramEdge, AssetRef } from "@/types";
-import { useOpenParam } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, getAsset, listAssets } from "@/lib/assets";
 
@@ -171,6 +171,7 @@ export default function DiagramsPage() {
     const d = storage.getById("diagrams", id, projectId);
     if (d) loadDiagram(d);
   }, loaded);
+  useTrackOpenAsset(current?.id ? { type: "diagram", id: current?.id } : null);
 
   // --- Drawing ---
   const draw = useCallback(() => {

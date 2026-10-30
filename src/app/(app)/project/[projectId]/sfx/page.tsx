@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { Play, Trash2, Shuffle, Dices, Volume2, Plus, Copy, Wand2 } from "lucide-react";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { VolumeControl } from "@/components/VolumeControl";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
@@ -363,6 +363,7 @@ export default function SfxPage() {
     const sound = storage.getById("sounds", id, projectId);
     if (sound) loadSaved(sound, false);
   });
+  useTrackOpenAsset(activeId ? { type: "sound", id: activeId } : null);
 
   // the waveform always shows the current settings, not only after pressing Play
   const waveform = useMemo(() => synthesize(sfxParams), [sfxParams]);

@@ -27,7 +27,7 @@ import {
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
 import type { DialogueTree, DialogueNode } from "@/types";
-import { useOpenParam } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 
 type NodeType = DialogueNode["type"];
@@ -190,6 +190,7 @@ export default function DialoguePage() {
       setPreview(null);
     }
   }, loaded);
+  useTrackOpenAsset(activeTree?.id ? { type: "dialogue", id: activeTree?.id } : null);
 
   const saveTree = useCallback(
     (tree: DialogueTree) => {

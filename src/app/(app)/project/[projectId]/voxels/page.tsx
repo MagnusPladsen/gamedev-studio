@@ -20,7 +20,7 @@ import { VoxelEmptyState } from "@/components/voxels/VoxelEmptyState";
 import { TOOL_META, VoxelToolbar } from "@/components/voxels/VoxelToolbar";
 import type { VoxelViewportApi } from "@/components/voxels/VoxelViewport";
 import { isTextField } from "@/hooks/useHistory";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { addLink } from "@/lib/links";
 import { storage } from "@/lib/storage";
 import { addColor, FALLBACK_COLORS, hexToRgb, MAX_COLORS, remapToPalette } from "@/lib/voxels/colors";
@@ -161,6 +161,7 @@ export default function VoxelsPage(): React.JSX.Element {
     const model = storage.getById("models", id, projectId);
     if (model) openModel(model);
   });
+  useTrackOpenAsset(activeModelId ? { type: "model", id: activeModelId } : null);
 
   function startModel(initial: VoxelDoc): VoxelModel {
     strokes.reset();

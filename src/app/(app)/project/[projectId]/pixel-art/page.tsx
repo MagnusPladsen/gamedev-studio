@@ -36,7 +36,7 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { storage } from "@/lib/storage";
 import { getLoadedImage, loadImage } from "@/lib/pixels";
 import { encodeGif } from "@/lib/gif";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { useAutosave } from "@/hooks/useAutosave";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { SaveIndicator } from "@/components/SaveIndicator";
@@ -330,6 +330,7 @@ export default function PixelArtPage() {
     const s = storage.getById("sprites", id, projectId);
     if (s) loadSprite(s);
   });
+  useTrackOpenAsset(activeSpriteId ? { type: "sprite", id: activeSpriteId } : null);
 
   // ── autosave ──
   type Doc = { id: string | null; name: string; w: number; h: number; frames: FrameData[]; fps: number };

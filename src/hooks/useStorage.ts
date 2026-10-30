@@ -3,6 +3,8 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { storage } from "@/lib/storage";
+import { getOpenAsset, setOpenAsset } from "@/lib/open-asset";
+import type { AssetRef } from "@/types";
 
 /** Re-renders the component whenever any stored data changes. */
 export function useStorageVersion(): number {
@@ -29,4 +31,19 @@ export function useOpenParam(open: (id: string) => void, ready = true) {
     handled.current = id;
     openRef.current(id);
   }, [id, ready]);
+}
+
+/** Reports the asset an editor has open, so the asset menu can keep it open when it re-mounts the editor. */
+export function useTrackOpenAsset(ref: AssetRef | null): void {
+  const type = ref?.type;
+  const id = ref?.id;
+  useEffect(() => {
+    if (!type || !id) return;
+    const own: AssetRef = { type, id };
+    setOpenAsset(own);
+    return () => {
+      const held = getOpenAsset();
+      if (held?.type === own.type && held.id === own.id) setOpenAsset(null);
+    };
+  }, [type, id]);
 }

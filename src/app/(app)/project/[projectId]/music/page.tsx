@@ -17,7 +17,7 @@ import {
   MoveVertical,
 } from "lucide-react";
 import { storage } from "@/lib/storage";
-import { useOpenParam } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { VolumeControl } from "@/components/VolumeControl";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
@@ -265,6 +265,7 @@ export default function MusicPage() {
       openTrack(t);
     }
   }, loaded);
+  useTrackOpenAsset(activeTrack?.id ? { type: "music", id: activeTrack?.id } : null);
 
   function getAudioCtx() {
     if (!audioCtxRef.current) {

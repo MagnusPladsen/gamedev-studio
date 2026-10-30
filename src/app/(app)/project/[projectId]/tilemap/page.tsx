@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { storage } from "@/lib/storage";
 import { getLoadedImage, preloadImages, spriteFrameSrc } from "@/lib/pixels";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -167,6 +167,7 @@ export default function TilemapPage() {
     const tm = storage.getById("tilemaps", id, projectId);
     if (tm) selectTilemap(tm);
   });
+  useTrackOpenAsset(current?.id ? { type: "tilemap", id: current?.id } : null);
 
   const requestRedraw = useCallback(() => setRedrawTick((t) => t + 1), []);
 

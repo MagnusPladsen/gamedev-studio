@@ -24,6 +24,7 @@ import {
   systemClipboardPayload,
   type StoredAsset,
 } from "@/lib/asset-actions";
+import { getOpenAsset } from "@/lib/open-asset";
 import { canPaste, copyAsset, pasteAsset, readClipboard } from "@/lib/asset-clipboard";
 import {
   getAssetMenuEntries,
@@ -178,12 +179,27 @@ function urlWithoutOpen(pathname: string): string {
   return query ? `${pathname}?${query}` : pathname;
 }
 
-/** Re-mounts the editor on screen when it shows the changed asset's tool, moving to a new asset only. */
+function urlWithOpen(pathname: string, id: string): string {
+  const params = new URLSearchParams(window.location.search);
+  params.set("open", id);
+  return `${pathname}?${params.toString()}`;
+}
+
+/** The asset the editor on screen reports as open, when it belongs to that tool. */
+function openAssetOnScreen(pathname: string, projectId: string): AssetRef | null {
+  const open = getOpenAsset();
+  return open && needsEditorReload(pathname, projectId, open.type) ? open : null;
+}
+
+/** Re-mounts the editor on screen when it shows the changed asset's tool, keeping its open asset open. */
 function refreshEditor(services: MenuServices, outcome: MutationOutcome): void {
   const { pathname, projectId, openId } = services;
   if (!outcome || !needsEditorReload(pathname, projectId, outcome.ref.type)) return;
   if (outcome.kind === "created") return services.navigateThenReload(assetHref(projectId, outcome.ref.type, outcome.ref.id), outcome.ref.id);
-  if (outcome.kind === "deleted" && openId === outcome.ref.id) return services.navigateThenReload(urlWithoutOpen(pathname), null);
+  const keep = openAssetOnScreen(pathname, projectId);
+  const current = keep?.id ?? openId;
+  if (outcome.kind === "deleted" && outcome.ref.id === current) return services.navigateThenReload(urlWithoutOpen(pathname), null);
+  if (keep && keep.id !== openId) return services.navigateThenReload(urlWithOpen(pathname, keep.id), keep.id);
   services.reloadView();
 }
 

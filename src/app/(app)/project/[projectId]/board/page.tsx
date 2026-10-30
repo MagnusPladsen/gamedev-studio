@@ -26,7 +26,7 @@ import { v4 as uuid } from "uuid";
 import type { Board, BoardColumn, ColumnCategory, Issue, IssuePriority, IssueType, Sprint } from "@/types";
 import { storage } from "@/lib/storage";
 import { getRelated } from "@/lib/links";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { useHistory } from "@/hooks/useHistory";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -129,6 +129,7 @@ export default function TaskBoardPage() {
   useOpenParam((id) => {
     if (storage.getById("issues", id, projectId)) setOpenId(id);
   }, !!board);
+  useTrackOpenAsset(openId ? { type: "issue", id: openId } : null);
 
   const openIssue = openId ? issues.find((i) => i.id === openId) : undefined;
 

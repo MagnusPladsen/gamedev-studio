@@ -8,7 +8,7 @@ import { storage } from "@/lib/storage";
 import type { Palette } from "@/types";
 import { v4 as uuid } from "uuid";
 import { LinkedAssets } from "@/components/LinkedAssets";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { useHistory } from "@/hooks/useHistory";
 import { useAutosave } from "@/hooks/useAutosave";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
@@ -129,6 +129,7 @@ export default function PalettesPage() {
     const p = storage.getById("palettes", id, projectId);
     if (p) select(p);
   });
+  useTrackOpenAsset(selected?.id ? { type: "palette", id: selected?.id } : null);
 
   function select(p: Palette) {
     setSelected(p);

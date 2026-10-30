@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Plus, Trash2, Package, Check, Images, Link2 } from "lucide-react";
 import { storage } from "@/lib/storage";
 import { loadImage, spriteFrameSrc } from "@/lib/pixels";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { useHistory } from "@/hooks/useHistory";
@@ -117,6 +117,7 @@ export default function SpriteSheetPage() {
     const sheet = storage.getById("spritesheets", id, projectId);
     if (sheet) selectSheet(sheet);
   });
+  useTrackOpenAsset(current?.id ? { type: "spritesheet", id: current?.id } : null);
 
   useEffect(() => {
     const canvas = canvasRef.current;

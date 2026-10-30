@@ -29,7 +29,7 @@ import { storage } from "@/lib/storage";
 import { getRelated, wikiTargets } from "@/lib/links";
 import { ASSET_KINDS, assetHref } from "@/lib/assets";
 import { LinkedAssets } from "@/components/LinkedAssets";
-import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import type { StoryEntry } from "@/types";
 import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
@@ -124,6 +124,7 @@ export default function StoryPage() {
   useOpenParam((id) => {
     if (storage.getById("stories", id, projectId)) selectEntry(id);
   });
+  useTrackOpenAsset(selectedId ? { type: "story", id: selectedId } : null);
 
   // Entry-level undo (title, type, tags, links, saved content). Typing in the editor uses the textarea's own undo.
   const history = useHistory(
