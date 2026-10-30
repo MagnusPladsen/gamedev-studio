@@ -4,7 +4,7 @@ A free, open source game development toolkit. Create pixel art, music, sound eff
 
 **No watermarks. No paywalls. No sign-up required.**
 
-Live at [gamedev.pladsen.dev](https://gamedev.pladsen.dev)
+Live at [gamedev-studio.pladsen.dev](https://gamedev-studio.pladsen.dev)
 
 ## Tools
 
@@ -24,7 +24,7 @@ Everything links together — sprites connect to tilemaps, dialogue references c
 
 ### Use Online
 
-Visit [gamedev.pladsen.dev](https://gamedev.pladsen.dev) and start creating. No account needed.
+Visit [gamedev-studio.pladsen.dev](https://gamedev-studio.pladsen.dev) and start creating. No account needed.
 
 ### Self-Host
 
@@ -48,7 +48,7 @@ cp .env.example .env.local
 
 ## Tech Stack
 
-- Next.js 15 + TypeScript
+- Next.js 16 + TypeScript
 - Tailwind CSS
 - Web Audio API (music & SFX)
 - HTML5 Canvas (pixel art, tilemaps, diagrams)
