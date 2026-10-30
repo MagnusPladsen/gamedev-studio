@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { registerAutosaveFlush } from "@/lib/autosave-registry";
 
 export type SaveState = "saved" | "unsaved" | "saving";
 
@@ -22,17 +23,23 @@ export function useAutosave<T>(
   const baseline = useRef(value);
   const keyRef = useRef(resetKey);
 
-  const flush = useCallback(() => {
+  const flushNow = useCallback((): Promise<void> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     const p = pending.current;
-    if (!p) return;
+    if (!p) return Promise.resolve();
     pending.current = null;
     setState("saving");
-    Promise.resolve(saveRef.current(p.value))
+    return Promise.resolve(saveRef.current(p.value))
       .then(() => setState(pending.current ? "unsaved" : "saved"))
       .catch(() => setState("unsaved"));
   }, []);
+
+  const flush = useCallback(() => {
+    void flushNow();
+  }, [flushNow]);
+
+  useEffect(() => registerAutosaveFlush(flushNow), [flushNow]);
 
   useEffect(() => {
     if (!Object.is(keyRef.current, resetKey)) {

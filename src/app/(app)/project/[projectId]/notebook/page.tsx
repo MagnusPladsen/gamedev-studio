@@ -23,6 +23,7 @@ import {
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
 import { assetHref } from "@/lib/assets";
+import { registerAutosaveFlush } from "@/lib/autosave-registry";
 import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
 import { useHistory } from "@/hooks/useHistory";
 import { LinkedAssets } from "@/components/LinkedAssets";
@@ -451,6 +452,8 @@ export default function NotebookPage() {
       if (storage.getById("notes", draft.id, projectId)) writeNow(draft);
     }, SAVE_DELAY);
   }, [draft, projectId, writeNow]);
+
+  useEffect(() => registerAutosaveFlush(flush), [flush]);
 
   // save pending changes when leaving the page
   useEffect(() => () => flush(), [flush]);
