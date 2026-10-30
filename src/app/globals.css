@@ -137,3 +137,7 @@ main [style*="background-color: var(--accent)"] {
 @media (prefers-reduced-motion: reduce) {
   button, a[href], [role="button"] { transition: none; }
 }
+
+/* ── asset context menu: no iOS callout on rows that open the studio menu ── */
+[data-asset-menu] { -webkit-touch-callout: none; }
+@media (max-width: 767px) { [data-asset-menu] { user-select: none; -webkit-user-select: none; } }
