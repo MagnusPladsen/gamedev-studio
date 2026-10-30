@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { AssetRef, AssetType, Issue, Note, Sprite } from "@/types";
 import { ContextMenu, type ContextMenuEntry } from "@/components/ContextMenu";
 import { AssetPickerModal } from "@/components/AssetPickerModal";
@@ -87,11 +87,18 @@ interface OpenMenuState {
 interface MenuServices {
   projectId: string;
   pathname: string;
+  /** The `?open=` id of the editor on screen, if any. */
+  openId: string | null;
   router: ReturnType<typeof useRouter>;
   showToast(options: ToastOptions): void;
   reloadView(): void;
+  /** Replaces the URL, then re-mounts the editor once `?open=` has become `open`. */
+  navigateThenReload(href: string, open: string | null): void;
   openPicker(request: PickerRequest, opener: HTMLElement | null): void;
 }
+
+/** "created" is a new asset the editor should switch to; "changed" keeps whatever the editor has open. */
+type MutationOutcome = { kind: "created" | "changed" | "deleted"; ref: AssetRef } | null;
 
 interface MenuTarget {
   context: AssetMenuContext;
@@ -107,6 +114,7 @@ interface ActionRun extends MenuTarget {
 type ActionHandler = (run: ActionRun) => void | Promise<void>;
 
 const COPY_FAILED_MESSAGE = "Couldn't copy: the browser blocked the clipboard";
+const ACTION_FAILED_MESSAGE = "Something went wrong";
 const ISSUE_ORDER_STEP = 1000;
 const PROJECT_PATH = /\/project\/([^/]+)/;
 
@@ -160,16 +168,32 @@ function toMenuEntries(entries: AssetMenuEntry[], run: (action: AssetActionId, a
   });
 }
 
-/** Writes pending editor saves first, then re-mounts the editor when it shows the changed asset's tool. */
-async function mutate(services: MenuServices, change: () => AssetRef | null, isDelete = false): Promise<AssetRef | null> {
+function urlWithoutOpen(pathname: string): string {
+  const params = new URLSearchParams(window.location.search);
+  params.delete("open");
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+/** Re-mounts the editor on screen when it shows the changed asset's tool, moving to a new asset only. */
+function refreshEditor(services: MenuServices, outcome: MutationOutcome): void {
+  const { pathname, projectId, openId } = services;
+  if (!outcome || !needsEditorReload(pathname, projectId, outcome.ref.type)) return;
+  if (outcome.kind === "created") return services.navigateThenReload(assetHref(projectId, outcome.ref.type, outcome.ref.id), outcome.ref.id);
+  if (outcome.kind === "deleted" && openId === outcome.ref.id) return services.navigateThenReload(urlWithoutOpen(pathname), null);
+  services.reloadView();
+}
+
+/** Writes pending editor saves first, so an open editor cannot overwrite the change afterwards. */
+async function mutate(services: MenuServices, change: () => MutationOutcome): Promise<MutationOutcome> {
   await flushAllAutosaves();
-  const result = change();
-  const { pathname, projectId, router, reloadView } = services;
-  if (result && needsEditorReload(pathname, projectId, result.type)) {
-    router.replace(isDelete ? pathname : assetHref(projectId, result.type, result.id), { scroll: false });
-    reloadView();
-  }
-  return result;
+  const outcome = change();
+  refreshEditor(services, outcome);
+  return outcome;
+}
+
+function created(ref: AssetRef | null): MutationOutcome {
+  return ref ? { kind: "created", ref } : null;
 }
 
 function toastWithOpen(services: MenuServices, message: string, ref: AssetRef): void {
@@ -217,23 +241,25 @@ function openLinkPicker(run: ActionRun, title: string, types?: AssetType[]): voi
   );
 }
 
-async function addToDiagram(services: MenuServices, change: () => AssetRef | null): Promise<void> {
-  const diagram = await mutate(services, change);
-  if (diagram) toastWithOpen(services, `Added to ${nameOf(services.projectId, diagram)}`, diagram);
+async function addToDiagram(services: MenuServices, change: () => MutationOutcome): Promise<void> {
+  const outcome = await mutate(services, change);
+  if (outcome) toastWithOpen(services, `Added to ${nameOf(services.projectId, outcome.ref)}`, outcome.ref);
 }
 
 function openDiagramPicker(run: ActionRun): void {
   const { services, context } = run;
   const { projectId } = services;
   const toRef = (id: string | undefined): AssetRef | null => (id ? { type: "diagram", id } : null);
+  const changed = (ref: AssetRef | null): MutationOutcome => (ref ? { kind: "changed", ref } : null);
   services.openPicker(
     {
       title: "Add to diagram",
       types: ["diagram"],
       exclude: [context.ref],
       createLabel: "New diagram",
-      onCreate: () => void addToDiagram(services, () => toRef(createDiagramWith(projectId, context.ref).id)),
-      onPick: (picked) => void addToDiagram(services, () => toRef(addAssetToDiagram(projectId, picked.id, context.ref)?.id)),
+      onCreate: () => void addToDiagram(services, () => created(toRef(createDiagramWith(projectId, context.ref).id))),
+      onPick: (picked) =>
+        void addToDiagram(services, () => changed(toRef(addAssetToDiagram(projectId, picked.id, context.ref)?.id))),
     },
     run.opener,
   );
@@ -257,7 +283,7 @@ async function toggleNotePin({ services, item }: ActionRun): Promise<void> {
   const note = item as Note;
   await mutate(services, () => {
     storage.save("notes", { ...note, pinned: !note.pinned, updatedAt: new Date().toISOString() }, services.projectId);
-    return { type: "note", id: note.id };
+    return { kind: "changed", ref: { type: "note", id: note.id } };
   });
 }
 
@@ -267,8 +293,8 @@ async function exportPng({ context, item }: ActionRun): Promise<void> {
 }
 
 async function duplicate({ services, context }: ActionRun): Promise<void> {
-  const copy = await mutate(services, () => duplicateAsset(services.projectId, context.ref));
-  if (copy) toastWithOpen(services, `Duplicated as ${nameOf(services.projectId, copy)}`, copy);
+  const outcome = await mutate(services, () => created(duplicateAsset(services.projectId, context.ref)));
+  if (outcome) toastWithOpen(services, `Duplicated as ${nameOf(services.projectId, outcome.ref)}`, outcome.ref);
 }
 
 async function copyInApp({ services, context }: ActionRun): Promise<void> {
@@ -292,20 +318,16 @@ async function rename({ services, context }: ActionRun): Promise<void> {
   if (next === null || !next.trim() || next.trim() === context.name) return;
   await mutate(services, () => {
     renameAsset(services.projectId, context.ref, next);
-    return context.ref;
+    return { kind: "changed", ref: context.ref };
   });
 }
 
 async function remove({ services, context }: ActionRun): Promise<void> {
   if (!window.confirm(deleteConfirmMessage(services.projectId, context.ref))) return;
-  await mutate(
-    services,
-    () => {
-      deleteAsset(services.projectId, context.ref);
-      return context.ref;
-    },
-    true,
-  );
+  await mutate(services, () => {
+    deleteAsset(services.projectId, context.ref);
+    return { kind: "deleted", ref: context.ref };
+  });
 }
 
 function pushTo(path: (run: ActionRun) => string): ActionHandler {
@@ -340,7 +362,13 @@ const ACTION_HANDLERS: Record<AssetActionId, ActionHandler> = {
 
 function runAction(services: MenuServices, ref: AssetRef, action: AssetActionId, arg: string | undefined, opener: HTMLElement | null): void {
   const target = readMenuTarget(services.projectId, ref);
-  if (target) void ACTION_HANDLERS[action]({ ...target, services, arg, opener });
+  if (!target) return;
+  const showFailure = (): void => services.showToast({ message: ACTION_FAILED_MESSAGE });
+  try {
+    Promise.resolve(ACTION_HANDLERS[action]({ ...target, services, arg, opener })).catch(showFailure);
+  } catch {
+    showFailure();
+  }
 }
 
 function useLastPointerType(): React.RefObject<string | null> {
@@ -368,29 +396,51 @@ interface PressedTrigger {
   event: Event;
 }
 
+interface PressTracker {
+  longPress: LongPress;
+  press(trigger: PressedTrigger): boolean;
+  /** True once after a long-press that actually opened a menu. */
+  consumeClick(): boolean;
+}
+
 /** One long-press controller for every trigger; the innermost trigger pressed last decides what opens. */
-function createPressTracker(): { longPress: LongPress; press(trigger: PressedTrigger): boolean } {
+function createPressTracker(): PressTracker {
   let pressed: PressedTrigger | null = null;
-  const longPress = createLongPress((point) => pressed?.resolve()?.(point, pressed.element));
+  let hasOpened = false;
+  const longPress = createLongPress((point) => {
+    const open = pressed?.resolve();
+    if (!open || !pressed) return;
+    hasOpened = true;
+    open(point, pressed.element);
+  });
   const press = (trigger: PressedTrigger): boolean => {
     if (pressed?.event === trigger.event) return false;
     pressed = trigger;
+    hasOpened = false;
     return true;
   };
-  return { longPress, press };
+  const consumeClick = (): boolean => {
+    const shouldSuppress = longPress.consumeClick() && hasOpened;
+    hasOpened = false;
+    return shouldSuppress;
+  };
+  return { longPress, press, consumeClick };
+}
+
+function isNativeMenuTarget(target: EventTarget | null): boolean {
+  const selectedText = window.getSelection()?.toString() ?? "";
+  return shouldUseNativeMenu(target instanceof Element ? target : null, selectedText);
 }
 
 function useTriggerFactory(): (resolve: ResolveOpen) => MenuTriggerProps {
   const lastPointerType = useLastPointerType();
-  const [{ longPress, press }] = useState(createPressTracker);
+  const [{ longPress, press, consumeClick }] = useState(createPressTracker);
 
   return useCallback(
     (resolve: ResolveOpen): MenuTriggerProps => ({
       "data-asset-menu": "",
       onContextMenu(e) {
-        const selectedText = window.getSelection()?.toString() ?? "";
-        const isNativeTarget = shouldUseNativeMenu(e.target instanceof Element ? e.target : null, selectedText);
-        const decision = contextMenuDecision({ isNativeTarget, lastPointerType: lastPointerType.current });
+        const decision = contextMenuDecision({ isNativeTarget: isNativeMenuTarget(e.target), lastPointerType: lastPointerType.current });
         if (decision === "native") return;
         const open = resolve();
         if (!open) return;
@@ -402,6 +452,7 @@ function useTriggerFactory(): (resolve: ResolveOpen) => MenuTriggerProps {
       },
       onPointerDown(e) {
         if (!press({ resolve, element: e.currentTarget as HTMLElement, event: e.nativeEvent })) return;
+        if (isNativeMenuTarget(e.target)) return longPress.cancel();
         longPress.down({ x: e.clientX, y: e.clientY, pointerType: e.pointerType });
       },
       onPointerMove: (e) => longPress.move({ x: e.clientX, y: e.clientY }),
@@ -409,12 +460,12 @@ function useTriggerFactory(): (resolve: ResolveOpen) => MenuTriggerProps {
       onPointerCancel: () => longPress.cancel(),
       onPointerLeave: () => longPress.cancel(),
       onClickCapture(e) {
-        if (!longPress.consumeClick()) return;
+        if (!consumeClick()) return;
         e.preventDefault();
         e.stopPropagation();
       },
     }),
-    [lastPointerType, longPress, press],
+    [lastPointerType, longPress, press, consumeClick],
   );
 }
 
@@ -458,22 +509,43 @@ function usePickerState(): {
   return { picker, openPicker, closePicker };
 }
 
+/** Re-mounts the editor only after a pending `router.replace` has landed, so it reads the new `?open=`. */
+function useNavigateThenReload(openId: string | null, reloadView: () => void): MenuServices["navigateThenReload"] {
+  const router = useRouter();
+  const pendingOpen = useRef<{ open: string | null } | null>(null);
+  useEffect(() => {
+    if (pendingOpen.current?.open !== openId) return;
+    pendingOpen.current = null;
+    reloadView();
+  }, [openId, reloadView]);
+  return useCallback(
+    (href: string, open: string | null) => {
+      pendingOpen.current = { open };
+      router.replace(href, { scroll: false });
+    },
+    [router],
+  );
+}
+
 function useMenuServices(projectId: string | null, openPicker: MenuServices["openPicker"]): MenuServices | null {
   const pathname = usePathname();
+  const openId = useSearchParams().get("open");
   const router = useRouter();
   const { showToast } = useToast();
   const { reloadView } = useSync();
+  const navigateThenReload = useNavigateThenReload(openId, reloadView);
   return useMemo(
-    () => (projectId ? { projectId, pathname, router, showToast, reloadView, openPicker } : null),
-    [projectId, pathname, router, showToast, reloadView, openPicker],
+    () =>
+      projectId ? { projectId, pathname, openId, router, showToast, reloadView, navigateThenReload, openPicker } : null,
+    [projectId, pathname, openId, router, showToast, reloadView, navigateThenReload, openPicker],
   );
 }
 
 async function pasteFromClipboard(services: MenuServices | null, type?: AssetType): Promise<void> {
   const clip = readClipboard();
   if (!services || !clip || (type && clip.type !== type) || !canPaste(clip, services.projectId).ok) return;
-  const pasted = await mutate(services, () => pasteAsset(clip, services.projectId));
-  if (pasted) toastWithOpen(services, `Pasted ${nameOf(services.projectId, pasted)}`, pasted);
+  const outcome = await mutate(services, () => created(pasteAsset(clip, services.projectId)));
+  if (outcome) toastWithOpen(services, `Pasted ${nameOf(services.projectId, outcome.ref)}`, outcome.ref);
 }
 
 function assetMenuOpener(services: MenuServices | null, ref: AssetRef, openMenu: AssetMenuApi["openMenu"]): OpenAt | null {
