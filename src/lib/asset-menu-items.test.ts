@@ -77,6 +77,14 @@ describe("getAssetMenuEntries", () => {
     expect(sound.at(-1)).toBe("Delete…");
   });
 
+  it("offers Play, or Stop while the asset is previewing", () => {
+    const soundRef: AssetRef = { type: "sound", id: "x" };
+    const playing = getAssetMenuEntries({ ref: soundRef, name: "Jump", isPinnedToSidebar: false, isPreviewing: true });
+    expect(labels(playing).slice(0, 4)).toEqual(["Open", "Open in new tab", "—", "Stop"]);
+    const idle = getAssetMenuEntries({ ref: { type: "music", id: "m" }, name: "Theme", isPinnedToSidebar: false });
+    expect(labels(idle)[3]).toBe("Play");
+  });
+
   it("labels the notebook pin from the note state", () => {
     const pinned = getAssetMenuEntries({ ref: noteRef, name: "Ideas", isPinnedToSidebar: false, isNotePinned: true });
     const unpinned = getAssetMenuEntries({ ref: noteRef, name: "Ideas", isPinnedToSidebar: false, isNotePinned: false });

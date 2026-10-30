@@ -38,6 +38,7 @@ import { flushAllAutosaves } from "@/lib/autosave-registry";
 import { downloadBlob } from "@/lib/download";
 import { addLink, getRelated } from "@/lib/links";
 import { createLongPress, type LongPress } from "@/lib/long-press";
+import { getPreviewing, playPreview, stopPreview } from "@/lib/audio/preview";
 import { anchorPoint, contextMenuDecision, shouldUseNativeMenu, type Point } from "@/lib/menu-position";
 import { isAssetPinned, toggleAssetPin } from "@/lib/pins";
 import { loadImage, spriteFrameSrc } from "@/lib/pixels";
@@ -134,6 +135,11 @@ function restoreFocus(opener: HTMLElement | null): void {
   if (opener?.isConnected) opener.focus({ preventScroll: true });
 }
 
+function isPreviewing(ref: AssetRef): boolean {
+  const current = getPreviewing();
+  return current?.type === ref.type && current.id === ref.id;
+}
+
 function readMenuTarget(projectId: string, ref: AssetRef): MenuTarget | null {
   const item = getStoredAsset(projectId, ref);
   if (!item) return null;
@@ -142,6 +148,7 @@ function readMenuTarget(projectId: string, ref: AssetRef): MenuTarget | null {
     name: getAssetName(ref.type, item),
     isPinnedToSidebar: isAssetPinned(projectId, ref),
   };
+  if (ref.type === "sound" || ref.type === "music") context.isPreviewing = isPreviewing(ref);
   if (ref.type === "note") context.isNotePinned = Boolean((item as Note).pinned);
   if (ref.type === "issue") {
     context.board = storage.getAll("boards", projectId)[0];
@@ -306,6 +313,11 @@ async function toggleNotePin({ services, item }: ActionRun): Promise<void> {
   });
 }
 
+function togglePreview({ services, context }: ActionRun): void {
+  if (isPreviewing(context.ref)) stopPreview();
+  else playPreview(services.projectId, context.ref);
+}
+
 async function exportPng({ context, item }: ActionRun): Promise<void> {
   const blob = await spritePngBlob(item as Sprite);
   if (blob) downloadBlob(`${context.name}.png`, blob);
@@ -363,6 +375,7 @@ const ACTION_HANDLERS: Record<AssetActionId, ActionHandler> = {
   "use-in-pixel-art": pushTo(({ services, context }) => `/project/${services.projectId}/pixel-art?palette=${encodeURIComponent(context.ref.id)}`),
   "use-in-voxels": pushTo(({ services, context }) => `/project/${services.projectId}/voxels?palette=${encodeURIComponent(context.ref.id)}`),
   "toggle-note-pin": toggleNotePin,
+  "toggle-preview": togglePreview,
   "move-to-column": moveToColumn,
   "add-to-sprint": addToSprint,
   "link-to-note": (run) => openLinkPicker(run, "Link to note", ["note"]),

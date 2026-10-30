@@ -29,6 +29,7 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { midiToFreq, scheduleNote } from "@/lib/audio/music-synth";
 import type { MusicTrack, MusicChannel, MusicNote } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -37,10 +38,6 @@ const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", 
 function midiToName(midi: number): string {
   const octave = Math.floor(midi / 12) - 1;
   return `${NOTE_NAMES[midi % 12]}${octave}`;
-}
-
-function midiToFreq(midi: number): number {
-  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 // C3 (48) to C6 (84) – 37 notes
@@ -279,56 +276,6 @@ export default function MusicPage() {
     return audioCtxRef.current;
   }
 
-  function createNoiseBuffer(ctx: AudioContext, duration: number): AudioBuffer {
-    const sampleRate = ctx.sampleRate;
-    const length = Math.ceil(sampleRate * duration);
-    const buffer = ctx.createBuffer(1, length, sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < length; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-    return buffer;
-  }
-
-  function scheduleNote(
-    ctx: AudioContext,
-    note: MusicNote,
-    instrument: string,
-    volume: number,
-    when: number,
-    beatDur: number
-  ) {
-    const startTime = when + note.start * beatDur;
-    const dur = note.duration * beatDur;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(volume * note.velocity * 0.3, startTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
-    gain.connect(masterGainRef.current ?? ctx.destination);
-
-    if (instrument === "noise") {
-      const buffer = createNoiseBuffer(ctx, dur);
-      const src = ctx.createBufferSource();
-      src.buffer = buffer;
-      const bpf = ctx.createBiquadFilter();
-      bpf.type = "bandpass";
-      bpf.frequency.value = midiToFreq(note.pitch);
-      bpf.Q.value = 1;
-      src.connect(bpf);
-      bpf.connect(gain);
-      src.start(startTime);
-      src.stop(startTime + dur);
-      track(src);
-    } else {
-      const osc = ctx.createOscillator();
-      osc.type = instrument as OscillatorType;
-      osc.frequency.setValueAtTime(midiToFreq(note.pitch), startTime);
-      osc.connect(gain);
-      osc.start(startTime);
-      osc.stop(startTime + dur);
-      track(osc);
-    }
-  }
-
   function track(node: AudioScheduledSourceNode) {
     scheduledRef.current.push(node);
     node.onended = () => {
@@ -352,7 +299,7 @@ export default function MusicPage() {
         if (!pattern) return;
         pattern.notes.forEach((note) => {
           if (note.start < patternLen) {
-            scheduleNote(ctx, note, ch.instrument, ch.volume, ctx.currentTime + offset, beatDur);
+            track(scheduleNote(ctx, masterGainRef.current ?? ctx.destination, note, ch.instrument, ch.volume, ctx.currentTime + offset, beatDur));
           }
         });
       });

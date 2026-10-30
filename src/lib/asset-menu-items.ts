@@ -2,7 +2,7 @@ import type { AssetRef, AssetType, Board, Issue } from "@/types";
 import { ASSET_KINDS } from "./assets";
 
 export type AssetActionId =
-  | "open" | "open-new-tab" | "export-png" | "use-in-tilemap" | "make-3d-model" | "use-in-pixel-art" | "use-in-voxels" | "toggle-note-pin"
+  | "open" | "open-new-tab" | "export-png" | "use-in-tilemap" | "make-3d-model" | "use-in-pixel-art" | "use-in-voxels" | "toggle-note-pin" | "toggle-preview"
   | "move-to-column" | "add-to-sprint" | "link-to-note" | "new-note" | "add-to-diagram" | "create-task"
   | "link-to-asset" | "show-links" | "duplicate" | "copy" | "copy-system" | "copy-name" | "copy-link"
   | "toggle-sidebar-pin" | "rename" | "delete";
@@ -25,6 +25,7 @@ export interface AssetMenuContext {
   name: string;
   isPinnedToSidebar: boolean;
   isNotePinned?: boolean;
+  isPreviewing?: boolean;
   board?: Board;
   issue?: Issue;
 }
@@ -81,6 +82,9 @@ function typeExtras(ctx: AssetMenuContext): AssetMenuEntry[] {
       return [item("use-in-tilemap", "Use in Tilemap"), item("make-3d-model", "Make 3D model"), item("export-png", "Export PNG")];
     case "palette":
       return [item("use-in-pixel-art", "Use in Pixel Art"), item("use-in-voxels", "Use in Voxels")];
+    case "sound":
+    case "music":
+      return [item("toggle-preview", ctx.isPreviewing ? "Stop" : "Play")];
     case "note":
       return [item("toggle-note-pin", ctx.isNotePinned ? "Unpin in Notebook" : "Pin in Notebook")];
     case "issue":
