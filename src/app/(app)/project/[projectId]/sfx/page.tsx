@@ -737,8 +737,8 @@ export default function SfxPage() {
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
+                      <AssetMenuButton asset={{ type: "sound", id: sound.id }} label={sound.name} />
                     </div>
-                    <AssetMenuButton asset={{ type: "sound", id: sound.id }} label={sound.name} />
                   </div>
                 ))}
               </div>

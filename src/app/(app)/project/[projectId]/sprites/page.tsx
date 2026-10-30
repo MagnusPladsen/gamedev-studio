@@ -305,16 +305,18 @@ export default function SpriteSheetPage() {
                 }}
               >
                 <span className="truncate">{s.name}</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); deleteSheet(s.id); }}
-                  className="opacity-0 group-hover:opacity-100 max-md:opacity-100"
-                  style={{ color: "var(--red)" }}
-                  title={`Delete ${s.name}`}
-                  aria-label={`Delete ${s.name}`}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-                <AssetMenuButton asset={{ type: "spritesheet", id: s.id }} label={s.name} />
+                <div className="flex items-center">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteSheet(s.id); }}
+                    className="opacity-0 group-hover:opacity-100 max-md:opacity-100"
+                    style={{ color: "var(--red)" }}
+                    title={`Delete ${s.name}`}
+                    aria-label={`Delete ${s.name}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                  <AssetMenuButton asset={{ type: "spritesheet", id: s.id }} label={s.name} />
+                </div>
               </div>
             ))}
           </div>

@@ -490,16 +490,18 @@ export default function TilemapPage() {
                 onClick={() => selectTilemap(tm)}
               >
                 <span className="truncate">{tm.name}</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); deleteTilemap(tm.id); }}
-                  className="opacity-0 group-hover:opacity-100 max-md:opacity-100"
-                  style={{ color: "var(--red)" }}
-                  title={`Delete ${tm.name}`}
-                  aria-label={`Delete ${tm.name}`}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-                <AssetMenuButton asset={{ type: "tilemap", id: tm.id }} label={tm.name} />
+                <div className="flex items-center">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteTilemap(tm.id); }}
+                    className="opacity-0 group-hover:opacity-100 max-md:opacity-100"
+                    style={{ color: "var(--red)" }}
+                    title={`Delete ${tm.name}`}
+                    aria-label={`Delete ${tm.name}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                  <AssetMenuButton asset={{ type: "tilemap", id: tm.id }} label={tm.name} />
+                </div>
               </div>
             ))}
           </div>
