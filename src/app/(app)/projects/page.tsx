@@ -1,0 +1,241 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Trash2, FolderOpen, Download, Upload } from "lucide-react";
+import { storage } from "@/lib/storage";
+import type { Project } from "@/types";
+import { v4 as uuid } from "uuid";
+
+export default function ProjectsPage() {
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [showNew, setShowNew] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    setProjects(storage.getAll("projects"));
+  }, []);
+
+  function createProject() {
+    if (!name.trim()) return;
+    const project: Project = {
+      id: uuid(),
+      name: name.trim(),
+      description: description.trim(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    storage.save("projects", project);
+    setProjects(storage.getAll("projects"));
+    setName("");
+    setDescription("");
+    setShowNew(false);
+    router.push(`/project/${project.id}/assets`);
+  }
+
+  function deleteProject(id: string) {
+    if (!confirm("Delete this project and all its assets?")) return;
+    storage.delete("projects", id);
+    setProjects(storage.getAll("projects"));
+  }
+
+  function exportProject(id: string) {
+    const json = storage.exportProject(id);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const project = projects.find((p) => p.id === id);
+    a.download = `${project?.name || "project"}.gamedev.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importProject() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = storage.importProject(reader.result as string);
+        if (result) {
+          setProjects(storage.getAll("projects"));
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }
+
+  return (
+    <div className="p-6 md:p-10 max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+            Projects
+          </h1>
+          <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
+            Each project keeps its assets separate. Create one per game.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={importProject}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
+            style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+          >
+            <Upload className="w-4 h-4" />
+            Import
+          </button>
+          <button
+            onClick={() => setShowNew(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            style={{ background: "var(--accent)", color: "white" }}
+          >
+            <Plus className="w-4 h-4" />
+            New Project
+          </button>
+        </div>
+      </div>
+
+      {showNew && (
+        <div
+          className="mb-6 p-5 rounded-xl border"
+          style={{ background: "var(--bg-card)", borderColor: "var(--accent)" }}
+        >
+          <h3 className="font-semibold mb-3" style={{ color: "var(--text-primary)" }}>
+            New Project
+          </h3>
+          <input
+            type="text"
+            placeholder="Project name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg text-sm mb-2 outline-none"
+            style={{
+              background: "var(--bg-primary)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border)",
+            }}
+            autoFocus
+            onKeyDown={(e) => e.key === "Enter" && createProject()}
+          />
+          <input
+            type="text"
+            placeholder="Description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg text-sm mb-3 outline-none"
+            style={{
+              background: "var(--bg-primary)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border)",
+            }}
+            onKeyDown={(e) => e.key === "Enter" && createProject()}
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={createProject}
+              className="px-4 py-1.5 rounded-lg text-sm font-medium"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              Create
+            </button>
+            <button
+              onClick={() => setShowNew(false)}
+              className="px-4 py-1.5 rounded-lg text-sm"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {projects.length === 0 && !showNew ? (
+        <div
+          className="text-center py-20 rounded-xl border border-dashed"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <FolderOpen className="w-12 h-12 mx-auto mb-4" style={{ color: "var(--text-muted)" }} />
+          <p className="text-lg font-medium mb-2" style={{ color: "var(--text-primary)" }}>
+            No projects yet
+          </p>
+          <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+            Create a project to start building your game assets
+          </p>
+          <button
+            onClick={() => setShowNew(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
+            style={{ background: "var(--accent)", color: "white" }}
+          >
+            <Plus className="w-4 h-4" />
+            Create Project
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {projects.map((project) => (
+            <div
+              key={project.id}
+              className="group flex items-center justify-between p-4 rounded-xl border transition-colors cursor-pointer"
+              style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+              onClick={() => router.push(`/project/${project.id}/assets`)}
+              onMouseOver={(e) => {
+                e.currentTarget.style.borderColor = "var(--border-hover)";
+                e.currentTarget.style.background = "var(--bg-hover)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.borderColor = "var(--border)";
+                e.currentTarget.style.background = "var(--bg-card)";
+              }}
+            >
+              <div>
+                <h3 className="font-medium" style={{ color: "var(--text-primary)" }}>
+                  {project.name}
+                </h3>
+                {project.description && (
+                  <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                    {project.description}
+                  </p>
+                )}
+                <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                  Created {new Date(project.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    exportProject(project.id);
+                  }}
+                  className="p-2 rounded-lg transition-colors"
+                  style={{ color: "var(--text-secondary)" }}
+                  title="Export project"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteProject(project.id);
+                  }}
+                  className="p-2 rounded-lg transition-colors"
+                  style={{ color: "var(--red)" }}
+                  title="Delete project"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

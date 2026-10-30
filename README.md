@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GameDev Studio
+
+A free, open source game development toolkit. Create pixel art, music, sound effects, tilemaps, dialogue trees, story worlds, and logic diagrams — all in one connected app.
+
+**No watermarks. No paywalls. No sign-up required.**
+
+Live at [gamedev.pladsen.dev](https://gamedev.pladsen.dev)
+
+## Tools
+
+- **Pixel Art Editor** — Draw sprites with layers, frames, animation, and onion skinning
+- **Music Composer** — Pattern-based music creation with multiple channels and instruments
+- **SFX Generator** — Generate retro and modern sound effects with presets and parameter control
+- **Tilemap Editor** — Paint game levels using your sprites with multiple layers
+- **Logic Diagrams** — Plan game systems with flow charts and state machines
+- **Story & Worldbuilding** — Wiki-style linked notes for characters, locations, items, lore
+- **Dialogue Trees** — Visual branching dialogue editor for RPGs
+- **Color Palettes** — Manage and share palettes with game-ready presets
+- **Sprite Sheet Packer** — Combine sprites into optimized sprite sheets
+
+Everything links together — sprites connect to tilemaps, dialogue references characters, notes tie it all together.
 
 ## Getting Started
 
-First, run the development server:
+### Use Online
+
+Visit [gamedev.pladsen.dev](https://gamedev.pladsen.dev) and start creating. No account needed.
+
+### Self-Host
 
 ```bash
+git clone https://github.com/magnuspladsen/gamedev-studio.git
+cd gamedev-studio
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### With Supabase (optional)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+For cloud storage and auth, create a Supabase project and add your keys:
 
-## Learn More
+```bash
+cp .env.example .env.local
+# Edit .env.local with your Supabase URL and anon key
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Tech Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Next.js 15 + TypeScript
+- Tailwind CSS
+- Web Audio API (music & SFX)
+- HTML5 Canvas (pixel art, tilemaps, diagrams)
+- Supabase (optional auth + storage)
+- Vercel Analytics
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## License
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT — do whatever you want with it.
