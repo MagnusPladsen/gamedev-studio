@@ -205,6 +205,7 @@ export default function PixelArtPage() {
   // false only for the blank canvas shown on arrival; the first edit turns autosave on
   const [touched, setTouched] = useState(false);
   const deletedRef = useRef(new Set<string>());
+  const initializedRef = useRef(false);
   const [mobilePanel, setMobilePanel] = useState(false);
   const [paletteSource, setPaletteSource] = useState("default");
   const [imageTick, setImageTick] = useState(0);
@@ -297,6 +298,7 @@ export default function PixelArtPage() {
 
   // ── load sprite ──
   async function loadSprite(sprite: Sprite) {
+    initializedRef.current = true;
     setCanvasW(sprite.width);
     setCanvasH(sprite.height);
     setActiveSpriteId(sprite.id);
@@ -320,16 +322,6 @@ export default function PixelArtPage() {
     historyIdxRef.current = -1;
     pushHistory(loaded, 0, 0, false);
   }
-
-  // ── init with blank if no frames ──
-  // Runs once per instance: re-run effects (strict mode, Activity) must not replace a sprite opened via ?open=.
-  const initializedRef = useRef(false);
-  useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-    if (frames.length === 0) startSprite(canvasW, canvasH, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useOpenParam((id) => {
     const s = storage.getById("sprites", id, projectId);
@@ -878,6 +870,15 @@ export default function PixelArtPage() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+
+  // ── init with blank if no frames ──
+  // Runs once per instance, and not after a sprite opened via ?open=: effects re-run (strict mode, Activity).
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    if (frames.length === 0) startSprite(canvasW, canvasH, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── render ──
   const btnStyle = (active?: boolean): React.CSSProperties => ({
