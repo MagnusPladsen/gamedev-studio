@@ -32,6 +32,8 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { SaveIndicator } from "@/components/SaveIndicator";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import { IssueDetail } from "@/components/board/IssueDetail";
 import {
   CATEGORY_LABEL,
@@ -221,6 +223,7 @@ export default function TaskBoardPage() {
           >
             <Plus className="w-3.5 h-3.5" /> Create issue
           </button>
+          <PasteButton type="issue" />
         </div>
       </div>
 
@@ -755,6 +758,8 @@ function IssueCard({
   onDragOverCard(e: React.DragEvent<HTMLDivElement>): void;
 }) {
   const version = useStorageVersion();
+  const { assetTriggerProps } = useAssetMenu();
+  const trigger = assetTriggerProps({ type: "issue", id: issue.id });
   const [menu, setMenu] = useState(false);
   const related = useMemo(
     () => getRelated(projectId, "issue", issue.id),
@@ -768,11 +773,18 @@ function IssueCard({
 
   return (
     <div
+      {...trigger}
       draggable
       onDragStart={onDragStart}
       onDragOver={onDragOverCard}
       onClick={onOpen}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
+      onKeyDown={(e) => {
+        trigger.onKeyDown(e);
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       role="button"
       tabIndex={0}
       aria-label={`${issue.key} ${issue.title}`}
@@ -900,6 +912,7 @@ function BacklogView({
   onOpen(id: string): void;
   onCompleteSprint(s: Sprint): void;
 }) {
+  const { assetTriggerProps } = useAssetMenu();
   const dragId = useRef<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const open = issues.filter((i) => !i.archived);
@@ -1065,6 +1078,7 @@ function BacklogView({
                 return (
                   <li
                     key={issue.id}
+                    {...assetTriggerProps({ type: "issue", id: issue.id })}
                     draggable
                     onDragStart={(e) => {
                       dragId.current = issue.id;
@@ -1117,6 +1131,7 @@ function BacklogView({
                         </option>
                       ))}
                     </select>
+                    <AssetMenuButton asset={{ type: "issue", id: issue.id }} label={`${issue.key} ${issue.title}`} />
                   </li>
                 );
               })}
@@ -1163,6 +1178,7 @@ function AllIssuesView({
   filters: Filters;
   onOpen(id: string): void;
 }) {
+  const { assetTriggerProps } = useAssetMenu();
   const [status, setStatus] = useState("");
   const [includeArchived, setIncludeArchived] = useState(true);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "updated", dir: -1 });
@@ -1252,12 +1268,16 @@ function AllIssuesView({
               return (
                 <tr
                   key={i.id}
+                  {...assetTriggerProps({ type: "issue", id: i.id })}
                   onClick={() => onOpen(i.id)}
                   className="border-t cursor-pointer hover:bg-[var(--bg-hover)]"
                   style={{ borderColor: "var(--border)", opacity: i.archived ? 0.6 : 1 }}
                 >
                   <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>
                     {i.key}
+                    <span className="md:hidden inline-flex align-middle ml-1">
+                      <AssetMenuButton asset={{ type: "issue", id: i.id }} label={`${i.key} ${i.title}`} />
+                    </span>
                   </td>
                   <td className="px-3 py-2" style={{ color: "var(--text-primary)" }}>
                     <span className="inline-flex items-center gap-2">

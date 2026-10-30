@@ -32,6 +32,10 @@ import { storage } from "@/lib/storage";
 import type { Diagram, DiagramNode, DiagramEdge, AssetRef } from "@/types";
 import { useOpenParam, useTrackOpenAsset } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { createLongPress } from "@/lib/long-press";
+import type { Point } from "@/lib/menu-position";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, getAsset, listAssets } from "@/lib/assets";
 
 // Literal colors: these are also used on the canvas, which can't resolve CSS variables.
@@ -111,6 +115,25 @@ export default function DiagramsPage() {
   const [showNodeMenu, setShowNodeMenu] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const lastTap = useRef(0);
+  const { assetTriggerProps, pasteTriggerProps, openAssetMenu } = useAssetMenu();
+  const pressedNode = useRef<{ node: DiagramNode; asset: AssetRef } | null>(null);
+  const hasPressFired = useRef(false);
+  const fireLongPress = useRef<(point: Point) => void>(() => {});
+  const [longPress] = useState(() => createLongPress((point) => fireLongPress.current(point)));
+  useEffect(() => {
+    fireLongPress.current = (point) => {
+      const pressed = pressedNode.current;
+      if (!pressed) return;
+      hasPressFired.current = true;
+      lastTap.current = 0;
+      setDragging(null);
+      updateCurrent((d) => ({
+        ...d,
+        nodes: d.nodes.map((n) => (n.id === pressed.node.id ? { ...n, x: pressed.node.x, y: pressed.node.y } : n)),
+      }));
+      openAssetMenu(point, pressed.asset, null);
+    };
+  });
 
   // Undo history tracks content only (not updatedAt), and a node drag counts once, on release.
   const content = useMemo(
@@ -744,9 +767,43 @@ export default function DiagramsPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function startNodePress(e: React.PointerEvent<HTMLCanvasElement>) {
+    pressedNode.current = null;
+    const { x, y } = screenToCanvas(e.clientX, e.clientY);
+    const node = hitTestNode(x, y);
+    const asset = node && nodeAsset(node);
+    if (node && asset) pressedNode.current = { node, asset };
+    if (pressedNode.current) longPress.down({ x: e.clientX, y: e.clientY, pointerType: e.pointerType });
+  }
+
+  function openNodeMenu(e: React.MouseEvent<HTMLCanvasElement>) {
+    const { x, y } = screenToCanvas(e.clientX, e.clientY);
+    const node = hitTestNode(x, y);
+    const asset = node && nodeAsset(node);
+    if (!asset) return;
+    e.preventDefault();
+    if (!hasPressFired.current) openAssetMenu({ x: e.clientX, y: e.clientY }, asset, null);
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    longPress.move({ x: e.clientX, y: e.clientY });
+    handleMouseMove(e);
+  }
+
+  function handlePointerEnd() {
+    longPress.up();
+    handleMouseUp();
+  }
+
   // Touch has no double-click, so two quick taps open the label editor.
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     e.currentTarget.setPointerCapture?.(e.pointerId);
+    if (longPress.consumeClick()) {
+      lastTap.current = 0;
+      return;
+    }
+    hasPressFired.current = false;
+    startNodePress(e);
     if (e.pointerType === "touch") {
       const now = Date.now();
       if (now - lastTap.current < 320) {
@@ -767,6 +824,8 @@ export default function DiagramsPage() {
           <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
             Diagrams
           </h1>
+          <div className="flex items-center gap-2 shrink-0">
+          <PasteButton type="diagram" />
           <button
             onClick={newDiagram}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium shrink-0"
@@ -775,6 +834,7 @@ export default function DiagramsPage() {
             <Plus className="w-4 h-4" />
             New Diagram
           </button>
+          </div>
         </div>
         <ExamplesBar projectId={projectId} collections={["diagrams"]} className="mb-6" />
         {diagrams.length === 0 ? (
@@ -797,10 +857,12 @@ export default function DiagramsPage() {
             </div>
           </div>
         ) : (
-          <div className="grid gap-3">
+          <div {...pasteTriggerProps("diagram")} className="grid gap-3">
             {diagrams.map((d) => (
               <div
                 key={d.id}
+                {...assetTriggerProps({ type: "diagram", id: d.id })}
+                tabIndex={0}
                 className="group flex items-center justify-between p-4 rounded-xl border transition-colors cursor-pointer"
                 style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
                 onClick={() => loadDiagram(d)}
@@ -813,15 +875,18 @@ export default function DiagramsPage() {
                     {d.nodes.length} nodes · {d.edges.length} edges
                   </div>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${d.name}"?`)) deleteDiagram(d.id); }}
-                  className="p-2 rounded md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                  style={{ color: "var(--red)" }}
-                  title="Delete diagram"
-                  aria-label={`Delete ${d.name}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${d.name}"?`)) deleteDiagram(d.id); }}
+                    className="p-2 rounded md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                    style={{ color: "var(--red)" }}
+                    title="Delete diagram"
+                    aria-label={`Delete ${d.name}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <AssetMenuButton asset={{ type: "diagram", id: d.id }} label={d.name} />
+                </div>
               </div>
             ))}
           </div>
@@ -975,9 +1040,10 @@ export default function DiagramsPage() {
           className="absolute inset-0 w-full h-full outline-none"
           style={{ cursor: mode === "connect" ? "crosshair" : dragging ? "grabbing" : panning ? "grabbing" : "default", touchAction: "none" }}
           onPointerDown={handlePointerDown}
-          onPointerMove={handleMouseMove}
-          onPointerUp={handleMouseUp}
-          onPointerCancel={handleMouseUp}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+          onContextMenu={openNodeMenu}
           onWheel={handleWheel}
           onDoubleClick={handleDoubleClick}
         />

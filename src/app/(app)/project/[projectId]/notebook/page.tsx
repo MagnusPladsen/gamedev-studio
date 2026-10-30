@@ -31,7 +31,7 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import type { Note } from "@/types";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
-import { useAssetMenu } from "@/components/AssetContextMenu";
+import { useAssetMenu, type MenuTriggerProps } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 
 const ACCENT = "#a3e635";
@@ -161,6 +161,7 @@ type WikiTarget = { type: "note" | "story"; id: string; title: string };
 
 interface RenderCtx {
   resolve(title: string): WikiTarget | undefined;
+  triggerProps(target: WikiTarget): MenuTriggerProps;
   onWiki(title: string, target: WikiTarget | undefined): void;
   onToggle(lineIndex: number): void;
 }
@@ -191,6 +192,7 @@ function renderInline(text: string, ctx: RenderCtx, keyBase: string): React.Reac
       out.push(
         <button
           key={key}
+          {...(target ? ctx.triggerProps(target) : {})}
           onClick={() => ctx.onWiki(title, target)}
           className="inline px-1 rounded hover:underline"
           style={
@@ -552,6 +554,7 @@ export default function NotebookPage() {
 
   const renderCtx: RenderCtx = {
     resolve: (title) => titleIndex.get(title.toLowerCase()),
+    triggerProps: (target) => assetTriggerProps({ type: target.type, id: target.id }),
     onWiki: (title, target) => {
       if (!target) createNote("blank", title);
       else if (target.type === "note") select(target.id);

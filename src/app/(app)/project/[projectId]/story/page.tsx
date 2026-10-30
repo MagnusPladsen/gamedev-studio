@@ -331,6 +331,7 @@ export default function StoryPage() {
         return (
           <button
             key={`${key}-${i}`}
+            {...assetTriggerProps({ type: "story", id: target.id })}
             onClick={() => selectEntry(target.id)}
             onMouseEnter={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
@@ -457,6 +458,11 @@ export default function StoryPage() {
               {graphData.nodes.map((node) => (
                 <g
                   key={node.key}
+                  {...(node.kind === "story"
+                    ? assetTriggerProps({ type: "story", id: node.id })
+                    : node.assetType
+                      ? assetTriggerProps({ type: node.assetType, id: node.id })
+                      : {})}
                   onClick={() => {
                     if (node.kind === "story") {
                       selectEntry(node.id);
@@ -795,6 +801,7 @@ export default function StoryPage() {
                         return (
                           <button
                             key={entry.id}
+                            {...assetTriggerProps({ type: "story", id: entry.id })}
                             onClick={() => selectEntry(entry.id)}
                             className="w-full text-left px-2.5 py-1.5 rounded-md text-xs hover:bg-[var(--bg-hover)]"
                             style={{ border: "1px solid var(--border)" }}
