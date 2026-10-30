@@ -156,4 +156,36 @@ describe("asset clipboard", () => {
     c.copyAsset("p1", pip);
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  it("should keep working in memory when sessionStorage access throws", async () => {
+    const c = await load();
+    vi.unstubAllGlobals();
+    Object.defineProperty(globalThis, "sessionStorage", {
+      get() {
+        throw new Error("SecurityError");
+      },
+      configurable: true,
+    });
+    const listener = vi.fn();
+    c.subscribeClipboard(listener);
+    const clip = c.copyAsset("p1", pip);
+    expect(clip?.name).toBe("Pip");
+    expect(c.readClipboard()?.name).toBe("Pip");
+    expect(listener).toHaveBeenCalledTimes(1);
+    Reflect.deleteProperty(globalThis, "sessionStorage");
+  });
+
+  it("should paste the copied state after the source changes", async () => {
+    const c = await load();
+    const clip = c.copyAsset("p1", pip)!;
+    c.renameAsset("p1", pip, "Changed");
+    const ref = c.pasteAsset(clip, "p2")!;
+    expect(c.storage.getById("sprites", ref.id, "p2")!.name).toBe("Pip");
+  });
+
+  it("should leave the target project untouched when a paste is refused", async () => {
+    const c = await load();
+    c.pasteAsset(c.copyAsset("p1", meadow)!, "p2");
+    expect(c.storage.getById("boards", "board-p2", "p2")).toMatchObject({ nextNumber: 5 });
+  });
 });

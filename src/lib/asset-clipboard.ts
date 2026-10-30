@@ -22,8 +22,8 @@ let memory: AssetClipboard | null = null;
 const listeners = new Set<() => void>();
 
 function writeSessionMirror(clip: AssetClipboard): void {
-  if (typeof sessionStorage === "undefined") return;
   try {
+    if (typeof sessionStorage === "undefined") return;
     const json = JSON.stringify(clip);
     if (new TextEncoder().encode(json).length < CLIPBOARD_SESSION_LIMIT) sessionStorage.setItem(CLIPBOARD_KEY, json);
     else sessionStorage.removeItem(CLIPBOARD_KEY);
@@ -33,8 +33,8 @@ function writeSessionMirror(clip: AssetClipboard): void {
 }
 
 function readSessionMirror(): AssetClipboard | null {
-  if (typeof sessionStorage === "undefined") return null;
   try {
+    if (typeof sessionStorage === "undefined") return null;
     const raw = sessionStorage.getItem(CLIPBOARD_KEY);
     return raw ? (JSON.parse(raw) as AssetClipboard) : null;
   } catch {
