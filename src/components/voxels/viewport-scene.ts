@@ -245,5 +245,4 @@ export function disposeViewportScene(viewport: ViewportScene): void {
   viewport.preview.material.dispose();
   viewport.gizmo.axes.dispose();
   viewport.renderer.dispose();
-  viewport.renderer.forceContextLoss();
 }
