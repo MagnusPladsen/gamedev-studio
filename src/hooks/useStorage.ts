@@ -48,7 +48,11 @@ export function useConsumedParam(name: string, consume: (value: string) => void)
   });
 
   useEffect(() => {
-    if (!value || handled.current === value) return;
+    if (!value) {
+      handled.current = null;
+      return;
+    }
+    if (handled.current === value) return;
     handled.current = value;
     consumeRef.current(value);
     const params = new URLSearchParams(window.location.search);
