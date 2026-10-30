@@ -12,7 +12,7 @@ export interface History {
   canRedo: boolean;
 }
 
-function isTextField(el: EventTarget | null): boolean {
+export function isTextField(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
   if (el.isContentEditable || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
   if (el instanceof HTMLInputElement) return !["range", "checkbox", "radio", "color", "button", "submit"].includes(el.type);
@@ -47,8 +47,15 @@ export function useUndoShortcuts(undo: () => void, redo: () => void, enabled = t
  * Pass the current value (updated immutably) and a function that puts an older value back.
  * Rapid changes within half a second (dragging, painting a stroke, typing a number) are grouped
  * into one step. Change `resetKey` (e.g. the open asset's id) to start a fresh history.
+ * Editors that already hand over one value per finished stroke can pass `burstMs: 0` so every
+ * change is its own step.
  */
-export function useHistory<T>(value: T, apply: (v: T) => void, resetKey?: unknown): History {
+export function useHistory<T>(
+  value: T,
+  apply: (v: T) => void,
+  resetKey?: unknown,
+  { burstMs = BURST_MS }: { burstMs?: number } = {}
+): History {
   const past = useRef<T[]>([]);
   const future = useRef<T[]>([]);
   const last = useRef(value);
@@ -82,9 +89,9 @@ export function useHistory<T>(value: T, apply: (v: T) => void, resetKey?: unknow
     } else {
       clearTimeout(burst.current);
     }
-    burst.current = setTimeout(() => (burst.current = null), BURST_MS);
+    burst.current = setTimeout(() => (burst.current = null), burstMs);
     last.current = value;
-  }, [value]);
+  }, [value, burstMs]);
 
   const applyRef = useRef(apply);
   applyRef.current = apply;
