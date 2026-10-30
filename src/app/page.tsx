@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BetaBadge } from "@/components/BetaBadge";
+import { supabaseEnabled } from "@/lib/supabase";
 import {
   Paintbrush,
   Music,
@@ -14,6 +15,7 @@ import {
   Sparkles,
   Download,
   Globe,
+  NotebookPen,
 } from "lucide-react";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -50,6 +52,7 @@ const tools = [
   { icon: MessageSquare, name: "Dialogue Trees", description: "Visual branching dialogue editor for RPGs and adventure games. Connect speakers and choices." },
   { icon: Palette, name: "Color Palettes", description: "Manage and share color palettes across all your tools. Built-in game-ready palette presets." },
   { icon: Package, name: "Sprite Sheet Packer", description: "Combine multiple sprites into optimized sprite sheets ready for any game engine." },
+  { icon: NotebookPen, name: "Notebook", description: "Ideas, to-do lists, design docs and bug lists, with checklists and links to any asset." },
 ];
 
 export default function LandingPage() {
@@ -77,6 +80,11 @@ export default function LandingPage() {
             >
               <GithubIcon className="w-5 h-5" />
             </a>
+            {supabaseEnabled && (
+              <Link href="/projects?signin=1" className="px-3 py-2 rounded-lg text-sm transition-colors hover:opacity-80" style={{ color: "var(--text-secondary)" }}>
+                Sign in
+              </Link>
+            )}
             <Link
               href="/projects"
               className="px-4 py-2 rounded-lg font-medium text-sm transition-all hover:opacity-90"

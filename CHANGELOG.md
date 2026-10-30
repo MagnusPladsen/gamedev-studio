@@ -18,6 +18,7 @@ First public beta.
 - **Dialogue:** branching conversations with choices, conditions and a play-through preview; JSON export
 - **Palettes:** shared palettes with PICO-8, Game Boy, NES, Endesga 16 and Sweetie 16 presets
 - **Sprite sheets:** pack sprites and frames into a PNG plus a JSON atlas
+- **Notebook:** ideas, to-dos, design docs and bug lists with clickable checklists, folders and pins
 
 ### Everything else
 - Projects keep each game's assets separate; export/import a whole project as one JSON file
@@ -26,5 +27,7 @@ First public beta.
   browser projects into the account
 - Optional saving to a folder on your computer (Chrome/Edge) for self-hosting
 - Hand-made example assets in every tool to start from
+- Undo/redo in every tool (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z, Ctrl+Y) with toolbar buttons
+- Listening volume for Music and SFX (exports are unaffected); zoom in the music piano roll
 
 [0.1.0-beta]: https://github.com/MagnusPladsen/gamedev-studio/releases/tag/v0.1.0-beta

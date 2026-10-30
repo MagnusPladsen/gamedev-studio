@@ -202,7 +202,19 @@ export interface SpriteSheet {
   createdAt: string;
 }
 
-export type AssetType = "sprite" | "sound" | "music" | "diagram" | "story" | "tilemap" | "dialogue" | "palette" | "spritesheet";
+export type AssetType = "sprite" | "sound" | "music" | "diagram" | "story" | "tilemap" | "dialogue" | "palette" | "spritesheet" | "note";
+
+export interface Note {
+  id: string;
+  projectId: string;
+  title: string;
+  content: string; // markdown; "- [ ] task" lines are checklists
+  folder?: string;
+  pinned?: boolean;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface AssetRef {
   type: AssetType;

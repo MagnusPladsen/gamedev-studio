@@ -25,7 +25,7 @@ A free, open source game development toolkit. Create pixel art, music, sound eff
 | Tool | What it does |
 | --- | --- |
 | **Pixel Art** | Sprites with layers, animation frames, onion skinning, undo/redo, PNG and sprite sheet export |
-| **Music** | Piano-roll composer with melody, harmony, bass and drum channels. WAV export |
+| **Music** | Piano-roll composer with melody, harmony, bass and drum channels, zoomable. WAV export |
 | **SFX** | Retro sound effect generator (jump, laser, coin, explosion…) with sliders and WAV export |
 | **Tilemap** | Paint levels with the sprites you drew, on multiple layers. PNG export |
 | **Diagrams** | Flow charts and state machines for game logic. Nodes can point at any asset |
@@ -33,6 +33,10 @@ A free, open source game development toolkit. Create pixel art, music, sound eff
 | **Dialogue** | Branching conversations with choices, conditions and a play-through preview. JSON export |
 | **Palettes** | Shared colour palettes with PICO-8, Game Boy, NES and more presets |
 | **Sprite sheets** | Pack sprites and their animation frames into one PNG plus a JSON atlas |
+| **Notebook** | Ideas, to-do lists, design docs and bug lists, with clickable checklists and `[[links]]` |
+
+Undo and redo work everywhere: <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> and <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>
+(or <kbd>Ctrl</kbd>+<kbd>Y</kbd>), plus buttons in every toolbar.
 
 **Everything connects.** Any asset can link to any other: a character's story entry links to their sprite and voice
 sound, a tilemap shows which sprites it uses, a diagram node opens the dialogue it describes. The project page

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Cloud, CloudOff, FolderOpen, FolderSync, HardDrive, Loader2, LogOut, Mail, AlertTriangle, Check, X } from "lucide-react";
 import { useSync } from "./SyncProvider";
 
@@ -111,6 +111,17 @@ export function AccountPanel() {
   const sync = useSync();
   const [dialog, setDialog] = useState(false);
   const { status, user, folder } = sync;
+
+  // /projects?signin=1 (the landing page's "Sign in" link) opens the dialog straight away
+  useEffect(() => {
+    if (!sync.ready) return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("signin")) return;
+    url.searchParams.delete("signin");
+    window.history.replaceState(null, "", url);
+    if (sync.cloudAvailable && !user) setDialog(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sync.ready]);
 
   const statusLine =
     status.state === "saving" ? (
