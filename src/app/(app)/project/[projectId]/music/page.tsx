@@ -14,10 +14,16 @@ import {
   VolumeX,
   ChevronDown,
   Check,
+  ZoomIn,
+  ZoomOut,
+  MoveHorizontal,
+  MoveVertical,
 } from "lucide-react";
 import { storage } from "@/lib/storage";
 import { useOpenParam } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
+import { VolumeControl } from "@/components/VolumeControl";
+import { previewGain, usePreviewVolume } from "@/hooks/usePreviewVolume";
 import type { MusicTrack, MusicChannel, MusicPattern, MusicNote } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -245,8 +251,12 @@ function exampleLoop(projectId: string): MusicTrack {
   };
 }
 
-const BEAT_W = 40;
-const ROW_H = 12;
+const BASE_BEAT_W = 40;
+const BASE_ROW_H = 12;
+const ZOOM_X = { min: 0.5, max: 4 };
+const ZOOM_Y = { min: 0.75, max: 3 };
+const ZOOM_KEY = "gds-music-zoom";
+const clamp = (v: number, { min, max }: { min: number; max: number }) => Math.min(max, Math.max(min, v));
 
 export default function MusicPage() {
   const params = useParams();
@@ -258,12 +268,70 @@ export default function MusicPage() {
   const [patternLen, setPatternLen] = useState(8);
   const [playing, setPlaying] = useState(false);
   const [looping, setLooping] = useState(true);
+  const [zoom, setZoom] = useState({ x: 1, y: 1 });
+  const rollRef = useRef<HTMLDivElement>(null);
+  const BEAT_W = BASE_BEAT_W * zoom.x;
+  const ROW_H = BASE_ROW_H * zoom.y;
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(ZOOM_KEY) ?? "null");
+      if (saved) setZoom({ x: clamp(saved.x, ZOOM_X), y: clamp(saved.y, ZOOM_Y) });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ZOOM_KEY, JSON.stringify(zoom));
+    } catch {}
+  }, [zoom]);
+
+  /** Zoom while keeping the beat/pitch under (clientX, clientY) — or the view centre — in place. */
+  const zoomBy = useCallback((fx: number, fy: number, clientX?: number, clientY?: number) => {
+    const el = rollRef.current;
+    setZoom((z) => {
+      const next = { x: clamp(z.x * fx, ZOOM_X), y: clamp(z.y * fy, ZOOM_Y) };
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const ox = (clientX ?? rect.left + rect.width / 2) - rect.left;
+        const oy = (clientY ?? rect.top + rect.height / 2) - rect.top;
+        const ax = el.scrollLeft + ox - 50;
+        const ay = el.scrollTop + oy;
+        requestAnimationFrame(() => {
+          el.scrollLeft = (ax * next.x) / z.x + 50 - ox;
+          el.scrollTop = (ay * next.y) / z.y - oy;
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  // Ctrl/Cmd + wheel zooms time, add Shift to zoom pitch. Needs a non-passive listener to stop page zoom.
+  useEffect(() => {
+    const el = rollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const f = Math.exp(-(e.deltaY || e.deltaX) * 0.0025);
+      if (e.shiftKey) zoomBy(1, f, e.clientX, e.clientY);
+      else zoomBy(f, 1, e.clientX, e.clientY);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  });
   const [playhead, setPlayhead] = useState(0);
   const [muted, setMuted] = useState<boolean[]>([false, false, false, false]);
   const [soloed, setSoloed] = useState<boolean[]>([false, false, false, false]);
   const [editingName, setEditingName] = useState(false);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const masterGainRef = useRef<GainNode | null>(null);
+  const volume = usePreviewVolume();
+  useEffect(() => {
+    const ctx = audioCtxRef.current;
+    if (ctx && masterGainRef.current) masterGainRef.current.gain.setTargetAtTime(previewGain(volume), ctx.currentTime, 0.02);
+  }, [volume]);
   const playIntervalRef = useRef<number | null>(null);
   const startTimeRef = useRef(0);
   const scheduledRef = useRef<AudioScheduledSourceNode[]>([]);
@@ -312,6 +380,9 @@ export default function MusicPage() {
   function getAudioCtx() {
     if (!audioCtxRef.current) {
       audioCtxRef.current = new AudioContext();
+      masterGainRef.current = audioCtxRef.current.createGain();
+      masterGainRef.current.gain.value = previewGain();
+      masterGainRef.current.connect(audioCtxRef.current.destination);
     }
     // Play is a click handler, so resuming here happens inside the user gesture.
     if (audioCtxRef.current.state === "suspended") void audioCtxRef.current.resume();
@@ -342,7 +413,7 @@ export default function MusicPage() {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(volume * note.velocity * 0.3, startTime);
     gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
-    gain.connect(ctx.destination);
+    gain.connect(masterGainRef.current ?? ctx.destination);
 
     if (instrument === "noise") {
       const buffer = createNoiseBuffer(ctx, dur);
@@ -745,6 +816,33 @@ export default function MusicPage() {
 
               <div className="w-px h-5" style={{ background: "var(--border)" }} />
 
+              <VolumeControl />
+
+              <div className="w-px h-5" style={{ background: "var(--border)" }} />
+
+              {/* Zoom */}
+              <div className="flex items-center gap-0.5" title="Zoom: Ctrl/⌘ + scroll for time, add Shift for pitch">
+                <MoveHorizontal className="w-3.5 h-3.5 mr-0.5" style={{ color: "var(--text-muted)" }} />
+                <button onClick={() => zoomBy(1 / 1.25, 1)} disabled={zoom.x <= ZOOM_X.min} className="p-1 rounded disabled:opacity-30" style={{ color: "var(--text-secondary)" }} title="Zoom out (time)" aria-label="Zoom out time">
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => zoomBy(1.25, 1)} disabled={zoom.x >= ZOOM_X.max} className="p-1 rounded disabled:opacity-30" style={{ color: "var(--text-secondary)" }} title="Zoom in (time)" aria-label="Zoom in time">
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <MoveVertical className="w-3.5 h-3.5 ml-1.5 mr-0.5" style={{ color: "var(--text-muted)" }} />
+                <button onClick={() => zoomBy(1, 1 / 1.25)} disabled={zoom.y <= ZOOM_Y.min} className="p-1 rounded disabled:opacity-30" style={{ color: "var(--text-secondary)" }} title="Zoom out (pitch)" aria-label="Zoom out pitch">
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => zoomBy(1, 1.25)} disabled={zoom.y >= ZOOM_Y.max} className="p-1 rounded disabled:opacity-30" style={{ color: "var(--text-secondary)" }} title="Zoom in (pitch)" aria-label="Zoom in pitch">
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setZoom({ x: 1, y: 1 })} className="ml-1 px-1.5 py-0.5 rounded text-[10px] tabular-nums" style={{ color: "var(--text-muted)", border: "1px solid var(--border)" }} title="Reset zoom">
+                  {Math.round(zoom.x * 100)}%
+                </button>
+              </div>
+
+              <div className="w-px h-5" style={{ background: "var(--border)" }} />
+
               {/* BPM */}
               <div className="flex items-center gap-1">
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>BPM</span>
@@ -853,7 +951,7 @@ export default function MusicPage() {
             </div>
 
             {/* Piano roll */}
-            <div className="flex-1 overflow-auto relative">
+            <div ref={rollRef} className="flex-1 overflow-auto relative">
               <div className="flex" style={{ minWidth: gridW + 50 }}>
                 {/* Piano keys */}
                 <div className="sticky left-0 z-10 shrink-0" style={{ width: 50, background: "var(--bg-secondary)" }}>
@@ -872,7 +970,7 @@ export default function MusicPage() {
                           color: isBlack ? "var(--text-muted)" : "var(--text-secondary)",
                         }}
                       >
-                        {name}
+                        {ROW_H >= 9 ? name : ""}
                       </div>
                     );
                   })}

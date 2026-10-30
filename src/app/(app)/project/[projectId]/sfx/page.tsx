@@ -7,6 +7,8 @@ import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
 import { useOpenParam } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
+import { VolumeControl } from "@/components/VolumeControl";
+import { previewGain, usePreviewVolume } from "@/hooks/usePreviewVolume";
 import type { SoundEffect, SfxParams } from "@/types";
 
 const SAMPLE_RATE = 44100;
@@ -334,6 +336,7 @@ function bufferToWav(buffer: Float32Array): ArrayBuffer {
 }
 
 let audioCtx: AudioContext | null = null;
+let masterGain: GainNode | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
 
 // Called from click handlers, so the context is created/resumed inside a user gesture.
@@ -341,6 +344,11 @@ function playBuffer(buffer: Float32Array) {
   if (buffer.length === 0) return;
   audioCtx ??= new AudioContext();
   if (audioCtx.state === "suspended") void audioCtx.resume();
+  if (!masterGain) {
+    masterGain = audioCtx.createGain();
+    masterGain.connect(audioCtx.destination);
+  }
+  masterGain.gain.value = previewGain();
   if (currentSource) {
     try {
       currentSource.stop();
@@ -352,7 +360,7 @@ function playBuffer(buffer: Float32Array) {
   audioBuffer.getChannelData(0).set(buffer);
   const source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
-  source.connect(audioCtx.destination);
+  source.connect(masterGain);
   source.start();
   currentSource = source;
   source.onended = () => {
@@ -395,6 +403,10 @@ function drawWaveform(canvas: HTMLCanvasElement, buffer: Float32Array) {
 }
 
 export default function SfxPage() {
+  const volume = usePreviewVolume();
+  useEffect(() => {
+    if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(previewGain(volume), audioCtx.currentTime, 0.02);
+  }, [volume]);
   const params = useParams();
   const projectId = params.projectId as string;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -595,6 +607,9 @@ export default function SfxPage() {
                 <Dices className="w-4 h-4" />
                 Mutate
               </button>
+              <div className="ml-auto order-last">
+                <VolumeControl />
+              </div>
               <button
                 onClick={exportWav}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm"

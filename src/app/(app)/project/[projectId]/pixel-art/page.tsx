@@ -30,6 +30,8 @@ import {
   FilePlus,
   Layers,
   Image as ImageIcon,
+  Film,
+  Maximize2,
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
@@ -269,11 +271,8 @@ const DEFAULT_PALETTE = [
   "#335511", "#113355",
 ];
 
-const SIZES = [
-  { label: "16×16", w: 16, h: 16 },
-  { label: "32×32", w: 32, h: 32 },
-  { label: "64×64", w: 64, h: 64 },
-];
+const SIZES = [8, 16, 24, 32, 48, 64, 96, 128].map((n) => ({ label: `${n}×${n}`, w: n, h: n }));
+const MAX_SIZE = 256;
 
 const TOOL_ICONS: Record<Tool, typeof Pencil> = {
   pencil: Pencil, eraser: Eraser, fill: PaintBucket, line: Minus,
@@ -308,6 +307,10 @@ export default function PixelArtPage() {
   const [zoom, setZoom] = useState(12);
   const [showGrid, setShowGrid] = useState(true);
   const [onionSkin, setOnionSkin] = useState(true);
+  const [onionOpacity, setOnionOpacity] = useState(0.3);
+  const [sizeMenu, setSizeMenu] = useState(false);
+  const [pickW, setPickW] = useState("32");
+  const [pickH, setPickH] = useState("32");
   const [playing, setPlaying] = useState(false);
   const [fps, setFps] = useState(8);
   const [previewFrame, setPreviewFrame] = useState(0);
@@ -514,7 +517,7 @@ export default function PixelArtPage() {
     if (onionSkin && !playing && displayFrame > 0) {
       const prev = frames[displayFrame - 1];
       if (prev) {
-        ctx.globalAlpha = 0.25;
+        ctx.globalAlpha = onionOpacity;
         for (const layer of prev.layers) {
           if (!layer.visible) continue;
           const img = getLoadedImage(layer.pixels, requestRedraw);
@@ -564,7 +567,7 @@ export default function PixelArtPage() {
     }
     // imageTick: redraw once layer images finish decoding
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frames, activeFrame, previewFrame, playing, canvasW, canvasH, zoom, showGrid, onionSkin, requestRedraw, imageTick]);
+  }, [frames, activeFrame, previewFrame, playing, canvasW, canvasH, zoom, showGrid, onionSkin, onionOpacity, requestRedraw, imageTick]);
 
   useEffect(() => { renderCanvas(); }, [renderCanvas]);
 
@@ -723,6 +726,42 @@ export default function PixelArtPage() {
     setZoom((z) => Math.max(2, Math.min(40, z + (e.deltaY < 0 ? 1 : -1))));
   }
 
+  // ── canvas size ──
+  async function resizeCanvas(w: number, h: number) {
+    if (w === canvasW && h === canvasH) return;
+    const dx = Math.floor((w - canvasW) / 2);
+    const dy = Math.floor((h - canvasH) / 2);
+    const next: FrameData[] = await Promise.all(
+      frames.map(async (f) => ({
+        ...f,
+        layers: await Promise.all(
+          f.layers.map(async (l) => {
+            const img = await loadImage(l.pixels);
+            const c = document.createElement("canvas");
+            c.width = w;
+            c.height = h;
+            const ctx = c.getContext("2d")!;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, dx, dy);
+            return { ...l, pixels: c.toDataURL() };
+          })
+        ),
+      }))
+    );
+    setCanvasW(w);
+    setCanvasH(h);
+    setFrames(next);
+    // undo across a size change would mix canvas sizes, so start history fresh
+    historyRef.current = [];
+    historyIdxRef.current = -1;
+    pushHistory(next, activeFrame, activeLayer);
+  }
+
+  function pickedSize(): [number, number] {
+    const clampSize = (v: string) => Math.max(1, Math.min(MAX_SIZE, Math.round(Number(v)) || 32));
+    return [clampSize(pickW), clampSize(pickH)];
+  }
+
   // ── frame management ──
   function addFrame() {
     const newFrame = makeBlankFrame(canvasW, canvasH);
@@ -872,9 +911,95 @@ export default function PixelArtPage() {
             className="bg-transparent text-sm font-medium outline-none w-40"
             style={{ color: "var(--text-primary)" }}
           />
-          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-            {canvasW}×{canvasH}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setPickW(String(canvasW));
+                setPickH(String(canvasH));
+                setSizeMenu((v) => !v);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium"
+              style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              title="Change canvas size"
+            >
+              <Maximize2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+              Canvas {canvasW}×{canvasH}
+              <ChevronDown className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+            </button>
+            {sizeMenu && (
+              <div
+                className="absolute z-50 top-full left-0 mt-1 w-72 p-3 rounded-lg shadow-xl"
+                style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+              >
+                <div className="text-xs font-medium mb-2" style={{ color: "var(--text-primary)" }}>Canvas size (pixels)</div>
+                <div className="grid grid-cols-4 gap-1 mb-2">
+                  {SIZES.map((sz) => {
+                    const on = String(sz.w) === pickW && String(sz.h) === pickH;
+                    return (
+                      <button
+                        key={sz.label}
+                        onClick={() => {
+                          setPickW(String(sz.w));
+                          setPickH(String(sz.h));
+                        }}
+                        className="text-xs py-1 rounded"
+                        style={{
+                          background: on ? "var(--accent)" : "var(--bg-hover)",
+                          color: on ? "white" : "var(--text-secondary)",
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        {sz.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-1.5 mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                  Custom
+                  <input type="number" min={1} max={MAX_SIZE} value={pickW} onChange={(e) => setPickW(e.target.value)} className="w-14 px-1.5 py-0.5 rounded outline-none" style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} aria-label="Width" />
+                  ×
+                  <input type="number" min={1} max={MAX_SIZE} value={pickH} onChange={(e) => setPickH(e.target.value)} className="w-14 px-1.5 py-0.5 rounded outline-none" style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} aria-label="Height" />
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={async () => {
+                      const [w, h] = pickedSize();
+                      await resizeCanvas(w, h);
+                      setSizeMenu(false);
+                    }}
+                    className="flex-1 text-xs py-1.5 rounded font-medium"
+                    style={{ background: "var(--accent)", color: "white" }}
+                    title="Keep your drawing, centred; larger adds empty space, smaller crops the edges"
+                  >
+                    Resize this sprite
+                  </button>
+                  <button
+                    onClick={() => {
+                      const [w, h] = pickedSize();
+                      createNewSprite("Untitled", w, h);
+                      setSizeMenu(false);
+                    }}
+                    className="flex-1 text-xs py-1.5 rounded"
+                    style={{ background: "var(--bg-hover)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  >
+                    New sprite
+                  </button>
+                </div>
+                <p className="text-[11px] mt-2 leading-snug" style={{ color: "var(--text-muted)" }}>
+                  Resizing keeps your drawing centred. Making it smaller crops the edges.
+                </p>
+              </div>
+            )}
           </div>
+          <button
+            onClick={() => setShowNewDialog(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs"
+            style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+            title="Start a new sprite or open an example"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New sprite
+          </button>
         </div>
         <div className="flex items-center gap-1.5">
           <button onClick={undo} style={btnStyle()} title="Undo (Ctrl+Z)"><Undo2 className="w-4 h-4" /></button>
@@ -1104,49 +1229,105 @@ export default function PixelArtPage() {
         </div>
       </div>
 
-      {/* Bottom: timeline */}
+      {/* Bottom: animation timeline */}
       <div
-        className="shrink-0 border-t px-4 py-2"
+        className="shrink-0 border-t px-4 pt-2 pb-2.5"
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
+        <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Film className="w-4 h-4" style={{ color: "var(--accent)" }} />
+            <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Animation</span>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {frames.length} frame{frames.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <span className="text-xs hidden lg:inline" style={{ color: "var(--text-muted)" }}>
+            Each box is one frame. Draw a frame, add the next one, then press Preview to play them in order.
+          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: "var(--text-secondary)" }} title="Shows the previous frame faded behind the current one, so the next frame is easy to line up">
+              <input type="checkbox" checked={onionSkin} onChange={(e) => setOnionSkin(e.target.checked)} className="accent-[var(--accent)]" />
+              Show previous frame
+            </label>
+            {onionSkin && (
+              <input
+                type="range"
+                min={10}
+                max={70}
+                value={Math.round(onionOpacity * 100)}
+                onChange={(e) => setOnionOpacity(Number(e.target.value) / 100)}
+                className="w-20 accent-[var(--accent)]"
+                title={`Previous frame opacity: ${Math.round(onionOpacity * 100)}%`}
+                aria-label="Previous frame opacity"
+              />
+            )}
+          </div>
+        </div>
+
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <button onClick={() => setPlaying(!playing)} style={btnStyle(playing)}>
-              {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setPlaying(!playing)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium"
+              style={{ background: playing ? "var(--red)" : "var(--accent)", color: "white" }}
+              title={playing ? "Stop the preview" : "Play all frames in a loop"}
+            >
+              {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              {playing ? "Stop" : "Preview"}
             </button>
-            <div className="flex items-center gap-1 ml-2">
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>FPS</span>
+            <label className="flex items-center gap-1 text-xs" style={{ color: "var(--text-muted)" }} title="How many frames play per second">
+              Speed
               <input
                 type="number"
+                min={1}
+                max={30}
                 value={fps}
                 onChange={(e) => setFps(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
                 className="w-10 text-xs px-1 py-0.5 rounded outline-none text-center"
                 style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
               />
-            </div>
+              fps
+            </label>
           </div>
 
-          <div className="flex-1 flex items-center gap-1 overflow-x-auto py-1">
-            {frames.map((frame, i) => (
-              <button
-                key={frame.id}
-                onClick={() => { setActiveFrame(i); setPlaying(false); }}
-                className="shrink-0 w-12 h-12 rounded border flex items-center justify-center text-xs relative"
-                style={{
-                  background: activeFrame === i && !playing ? "var(--bg-hover)" : "var(--bg-card)",
-                  borderColor: activeFrame === i && !playing ? "var(--accent)" : "var(--border)",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                {i + 1}
-              </button>
-            ))}
+          <div className="flex-1 flex items-center gap-1.5 overflow-x-auto py-1">
+            {frames.map((frame, i) => {
+              const selected = (playing ? previewFrame : activeFrame) === i;
+              return (
+                <button
+                  key={frame.id}
+                  onClick={() => { setActiveFrame(i); setPlaying(false); }}
+                  className="shrink-0 w-14 h-14 rounded border relative overflow-hidden"
+                  style={{
+                    background: "repeating-conic-gradient(#1a1a2a 0% 25%, #222238 0% 50%) 0 0 / 8px 8px",
+                    borderColor: selected ? "var(--accent)" : "var(--border)",
+                    boxShadow: selected ? "0 0 0 1px var(--accent)" : undefined,
+                  }}
+                  title={`Frame ${i + 1}`}
+                >
+                  {frame.layers.filter((l) => l.visible).map((l) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={l.id} src={l.pixels} alt="" className="absolute inset-1 w-[calc(100%-8px)] h-[calc(100%-8px)] object-contain" style={{ imageRendering: "pixelated" }} />
+                  ))}
+                  <span className="absolute bottom-0 right-0 px-1 text-[9px] rounded-tl" style={{ background: "rgba(0,0,0,0.6)", color: "var(--text-secondary)" }}>
+                    {i + 1}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="flex items-center gap-1">
-            <button onClick={addFrame} style={btnStyle()} title="Add frame"><FilePlus className="w-4 h-4" /></button>
-            <button onClick={duplicateFrame} style={btnStyle()} title="Duplicate frame"><Copy className="w-4 h-4" /></button>
-            <button onClick={deleteFrame} style={btnStyle()} title="Delete frame"><Trash2 className="w-4 h-4" /></button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={addFrame} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs" style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }} title="Add an empty frame at the end">
+              <FilePlus className="w-3.5 h-3.5" /> New frame
+            </button>
+            <button onClick={duplicateFrame} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs" style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }} title="Copy the selected frame, a quick way to make the next pose">
+              <Copy className="w-3.5 h-3.5" /> Duplicate
+            </button>
+            <button onClick={deleteFrame} disabled={frames.length <= 1} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs disabled:opacity-40" style={{ color: "var(--red)", border: "1px solid var(--border)" }} title="Delete the selected frame">
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </button>
           </div>
         </div>
       </div>
