@@ -19,15 +19,22 @@ import {
   ChevronLeft,
   LayoutDashboard,
   Menu,
+  MoreHorizontal,
   X,
 } from "lucide-react";
 import { useState, Suspense } from "react";
 import { SyncProvider, useSync } from "@/components/SyncProvider";
 import { ToastProvider } from "@/components/Toast";
 import { AssetContextMenuProvider } from "@/components/AssetContextMenu";
+import type { ContextMenuEntry } from "@/components/ContextMenu";
+import { anchorPoint, type Point } from "@/lib/menu-position";
+import { SidebarPins } from "@/components/SidebarPins";
 import { AccountPanel } from "@/components/AccountPanel";
 import { BetaBadge } from "@/components/BetaBadge";
 import { ASSET_KINDS } from "@/lib/assets";
+import { getPins, isToolPinned, orderTools, toggleToolPin } from "@/lib/pins";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { useStorageVersion } from "@/hooks/useStorage";
 import { storage } from "@/lib/storage";
 
 /** Tints the shared surface colours with a tool's colour, so every editor inside picks it up. */
@@ -66,10 +73,39 @@ const toolNav = [
   { icon: Package, name: "Sprite Sheets", path: "sprites", color: ASSET_KINDS.spritesheet.color },
 ];
 
+function toolMenuEntries(projectId: string, path: string): ContextMenuEntry[] {
+  const pinned = isToolPinned(projectId, path);
+  return [{ kind: "item", key: "pin", label: pinned ? "Unpin" : "Pin to top", onSelect: () => toggleToolPin(projectId, path) }];
+}
+
+/** Phone-only `⋯` on a tool row; opens the same menu as right-click. */
+function ToolMenuButton({ name, onOpen }: { name: string; onOpen(anchor: Point, opener: HTMLElement): void }): React.JSX.Element {
+  const title = `More actions for ${name}`;
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const button = event.currentTarget;
+        onOpen(anchorPoint(event, button.getBoundingClientRect()), button);
+      }}
+      className="md:hidden absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-md"
+      style={{ color: "var(--text-primary)" }}
+    >
+      <MoreHorizontal className="w-3.5 h-3.5" />
+    </button>
+  );
+}
+
 function AppSidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { ready, generation } = useSync();
+  useStorageVersion();
+  const { openMenu, menuTriggerProps } = useAssetMenu();
 
   const projectMatch = pathname.match(/\/project\/([^/]+)/);
   const projectId = projectMatch?.[1];
@@ -132,11 +168,12 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
                   All Projects
                 </Link>
               </div>
+              <SidebarPins projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
               <div className="px-2 space-y-0.5">
-                {toolNav.map((tool) => {
+                {orderTools(toolNav, getPins(projectId).tools).map((tool) => {
                   const href = `/project/${projectId}/${tool.path}`;
                   const isActive = pathname === href;
-                  return (
+                  const link = (
                     <Link
                       key={tool.path}
                       href={href}
@@ -146,10 +183,18 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
                         background: isActive ? `color-mix(in srgb, ${tool.color} 14%, transparent)` : "transparent",
                       }}
                       onClick={() => setSidebarOpen(false)}
+                      {...(tool.path === "assets" ? {} : menuTriggerProps(() => toolMenuEntries(projectId, tool.path), tool.name))}
                     >
                       <tool.icon className="w-4 h-4" style={{ color: isActive ? tool.color : undefined }} />
                       {tool.name}
                     </Link>
+                  );
+                  if (tool.path === "assets") return link;
+                  return (
+                    <div key={tool.path} className="relative">
+                      {link}
+                      <ToolMenuButton name={tool.name} onOpen={(anchor, opener) => openMenu(anchor, toolMenuEntries(projectId, tool.path), tool.name, opener)} />
+                    </div>
                   );
                 })}
               </div>

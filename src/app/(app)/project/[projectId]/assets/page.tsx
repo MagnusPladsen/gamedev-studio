@@ -4,45 +4,19 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
-  Paintbrush,
-  Music,
-  Volume2,
-  GitBranch,
-  BookOpen,
-  Grid3X3,
-  MessageSquare,
-  Palette,
-  Package,
   ArrowRight,
   Search,
   Link2,
   Download,
-  NotebookPen,
-  SquareKanban,
-  Box,
 } from "lucide-react";
 import { storage, PROJECT_COLLECTIONS } from "@/lib/storage";
 import { isExample } from "@/lib/examples";
+import { ASSET_ICONS } from "@/components/asset-icons";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, listAssets } from "@/lib/assets";
 import { getRelated } from "@/lib/links";
 import { useStorageVersion } from "@/hooks/useStorage";
 import type { AssetType } from "@/types";
-
-const ICONS: Record<AssetType, React.ComponentType<{ className?: string }>> = {
-  sprite: Paintbrush,
-  music: Music,
-  sound: Volume2,
-  tilemap: Grid3X3,
-  diagram: GitBranch,
-  story: BookOpen,
-  dialogue: MessageSquare,
-  palette: Palette,
-  spritesheet: Package,
-  note: NotebookPen,
-  issue: SquareKanban,
-  model: Box,
-};
 
 const ASSET_COLLECTIONS = PROJECT_COLLECTIONS.filter((c) => c !== "links");
 
@@ -139,7 +113,7 @@ export default function AssetsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-12">
         {ASSET_TYPES.map((t) => {
           const kind = ASSET_KINDS[t];
-          const Icon = ICONS[t];
+          const Icon = ASSET_ICONS[t];
           return (
             <Link
               key={t}
@@ -221,7 +195,7 @@ export default function AssetsPage() {
                 ) : (
                   <span className="w-6 h-6 rounded shrink-0 flex items-center justify-center" style={{ background: `${kind.color}22`, color: kind.color }}>
                     {(() => {
-                      const Icon = ICONS[a.type];
+                      const Icon = ASSET_ICONS[a.type];
                       return <Icon className="w-3.5 h-3.5" />;
                     })()}
                   </span>
