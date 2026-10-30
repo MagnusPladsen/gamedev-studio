@@ -127,13 +127,18 @@ export default function DiagramsPage() {
       hasPressFired.current = true;
       lastTap.current = 0;
       setDragging(null);
-      updateCurrent((d) => ({
-        ...d,
-        nodes: d.nodes.map((n) => (n.id === pressed.node.id ? { ...n, x: pressed.node.x, y: pressed.node.y } : n)),
-      }));
+      setCurrent((previous) => {
+        const moved = previous?.nodes.find((n) => n.id === pressed.node.id);
+        if (!previous || !moved || (moved.x === pressed.node.x && moved.y === pressed.node.y)) return previous;
+        return {
+          ...previous,
+          nodes: previous.nodes.map((n) => (n.id === pressed.node.id ? { ...n, x: pressed.node.x, y: pressed.node.y } : n)),
+        };
+      });
       openAssetMenu(point, pressed.asset, null);
     };
   });
+  useEffect(() => () => longPress.cancel(), [longPress]);
 
   // Undo history tracks content only (not updatedAt), and a node drag counts once, on release.
   const content = useMemo(
@@ -773,7 +778,7 @@ export default function DiagramsPage() {
     const node = hitTestNode(x, y);
     const asset = node && nodeAsset(node);
     if (node && asset) pressedNode.current = { node, asset };
-    if (pressedNode.current) longPress.down({ x: e.clientX, y: e.clientY, pointerType: e.pointerType });
+    if (pressedNode.current && mode !== "connect") longPress.down({ x: e.clientX, y: e.clientY, pointerType: e.pointerType });
   }
 
   function openNodeMenu(e: React.MouseEvent<HTMLCanvasElement>) {
@@ -798,10 +803,6 @@ export default function DiagramsPage() {
   // Touch has no double-click, so two quick taps open the label editor.
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    if (longPress.consumeClick()) {
-      lastTap.current = 0;
-      return;
-    }
     hasPressFired.current = false;
     startNodePress(e);
     if (e.pointerType === "touch") {
@@ -825,20 +826,20 @@ export default function DiagramsPage() {
             Diagrams
           </h1>
           <div className="flex items-center gap-2 shrink-0">
-          <PasteButton type="diagram" />
-          <button
-            onClick={newDiagram}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium shrink-0"
-            style={{ background: "var(--accent)", color: "white" }}
-          >
-            <Plus className="w-4 h-4" />
-            New Diagram
-          </button>
+            <PasteButton type="diagram" />
+            <button
+              onClick={newDiagram}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium shrink-0"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              <Plus className="w-4 h-4" />
+              New Diagram
+            </button>
           </div>
         </div>
         <ExamplesBar projectId={projectId} collections={["diagrams"]} className="mb-6" />
         {diagrams.length === 0 ? (
-          <div className="text-center py-20 rounded-xl border border-dashed" style={{ borderColor: "var(--border)" }}>
+          <div {...pasteTriggerProps("diagram")} className="text-center py-20 rounded-xl border border-dashed" style={{ borderColor: "var(--border)" }}>
             <GitBranch className="w-12 h-12 mx-auto mb-4" style={{ color: "var(--text-muted)" }} />
             <p className="text-lg font-medium mb-2" style={{ color: "var(--text-primary)" }}>
               No diagrams yet
@@ -863,6 +864,14 @@ export default function DiagramsPage() {
                 key={d.id}
                 {...assetTriggerProps({ type: "diagram", id: d.id })}
                 tabIndex={0}
+                onKeyDown={(e) => {
+                  const trigger = assetTriggerProps({ type: "diagram", id: d.id });
+                  trigger.onKeyDown(e);
+                  if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    loadDiagram(d);
+                  }
+                }}
                 className="group flex items-center justify-between p-4 rounded-xl border transition-colors cursor-pointer"
                 style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
                 onClick={() => loadDiagram(d)}
