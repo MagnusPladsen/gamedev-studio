@@ -321,6 +321,16 @@ export default function PixelArtPage() {
     pushHistory(loaded, 0, 0, false);
   }
 
+  // ── init with blank if no frames ──
+  // Runs once per instance: re-run effects (strict mode, Activity) must not replace a sprite opened via ?open=.
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    if (frames.length === 0) startSprite(canvasW, canvasH, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useOpenParam((id) => {
     const s = storage.getById("sprites", id, projectId);
     if (s) loadSprite(s);
@@ -868,12 +878,6 @@ export default function PixelArtPage() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-
-  // ── init with blank if no frames ──
-  useEffect(() => {
-    if (frames.length === 0) startSprite(canvasW, canvasH, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ─── render ──
   const btnStyle = (active?: boolean): React.CSSProperties => ({
