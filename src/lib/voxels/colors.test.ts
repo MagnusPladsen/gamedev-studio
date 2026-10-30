@@ -23,7 +23,7 @@ describe("addColor", () => {
 
   it("returns the nearest value when the list is full", () => {
     const colors = manyColors(MAX_COLORS);
-    const result = addColor(colors, "#000005");
+    const result = addColor(colors, "#000105");
     expect(result.colors).toHaveLength(MAX_COLORS);
     expect(result.value).toBe(6);
   });

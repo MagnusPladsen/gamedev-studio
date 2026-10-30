@@ -45,5 +45,9 @@ describe("spriteToVoxels", () => {
     const result = spriteToVoxels(image, []);
     if (!result.ok) throw new Error("expected ok");
     expect(result.colors).toHaveLength(255);
+    const solid = Array.from(result.grid.data).filter((value) => value !== 0);
+    expect(solid).toHaveLength(300);
+    expect(Math.min(...solid)).toBeGreaterThanOrEqual(1);
+    expect(Math.max(...solid)).toBeLessThanOrEqual(255);
   });
 });
