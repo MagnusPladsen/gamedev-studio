@@ -18,6 +18,7 @@ import { addLink, getRelated } from "./links";
 import { isAssetPinned, toggleAssetPin } from "./pins";
 import {
   addAssetToDiagram,
+  cloneAsset,
   assetUrl,
   createDiagramWith,
   createNoteAbout,
@@ -300,3 +301,56 @@ describe("system clipboard", () => {
     );
   });
 });
+
+describe("cloneAsset placement and isolation", () => {
+  const sourceIssue = (): Issue => storage.getById("issues", issueRef.id, "p1")!;
+
+  it("puts a backlog issue in the target board's first column with its next key", () => {
+    const clone = cloneAsset("issue", sourceIssue(), "p2", "backlog") as Issue;
+    const targetBoard = storage.getAll("boards", "p2")[0];
+    expect(clone).toMatchObject({
+      projectId: "p2",
+      status: targetBoard.columns[0].id,
+      sprintId: null,
+      key: `${targetBoard.keyPrefix}-1`,
+      archived: false,
+    });
+    expect(clone.resolvedAt).toBeUndefined();
+    expect(clone.id).not.toBe(issueRef.id);
+  });
+
+  it("sets resolvedAt only when the target column is done", () => {
+    storage.save("issues", { ...sourceIssue(), status: "done", resolvedAt: undefined }, "p1");
+    const inDone = cloneAsset("issue", sourceIssue(), "p1", "in-place") as Issue;
+    expect(inDone.resolvedAt).toBeDefined();
+    const inBacklog = cloneAsset("issue", sourceIssue(), "p1", "backlog") as Issue;
+    expect(inBacklog.status).toBe("todo");
+    expect(inBacklog.resolvedAt).toBeUndefined();
+  });
+
+  it("orders after the highest order in the target status", () => {
+    storage.save("issues", { ...sourceIssue(), id: "other", key: "PIP-9", order: 4500 }, "p1");
+    const clone = cloneAsset("issue", sourceIssue(), "p1", "in-place") as Issue;
+    expect(clone.order).toBe(5500);
+  });
+
+  it("adds ' copy' only when the name exists in the target project", () => {
+    const spriteSource = getSprite();
+    expect((cloneAsset("sprite", spriteSource, "p2", "in-place") as Sprite).name).toBe("Pip");
+    storage.save("sprites", { ...spriteSource, id: "p2-pip", projectId: "p2" }, "p2");
+    expect((cloneAsset("sprite", spriteSource, "p2", "in-place") as Sprite).name).toBe("Pip copy");
+  });
+
+  it("deep copies so editing the clone leaves the source untouched", () => {
+    const spriteSource = getSprite();
+    const clone = cloneAsset("sprite", spriteSource, "p2", "in-place") as Sprite;
+    clone.frames[0].pixels = "changed";
+    clone.frames.push(clone.frames[0]);
+    expect(spriteSource.frames).toHaveLength(1);
+    expect(spriteSource.frames[0].pixels).toBe("data:image/png;base64,AAA");
+  });
+});
+
+function getSprite(): Sprite {
+  return storage.getById("sprites", pip.id, "p1")!;
+}
