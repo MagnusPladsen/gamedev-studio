@@ -43,6 +43,9 @@ import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { useAssetMenu } from "@/components/AssetContextMenu";
+import type { ContextMenuEntry } from "@/components/ContextMenu";
+import { useToast } from "@/components/Toast";
+import { copyToSystemClipboard } from "@/lib/asset-actions";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { Sprite, SpriteFrame } from "@/types";
 
@@ -194,7 +197,8 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export default function PixelArtPage() {
   const params = useParams();
   const projectId = params.projectId as string;
-  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
+  const { assetTriggerProps, menuTriggerProps, pasteTriggerProps } = useAssetMenu();
+  const { showToast } = useToast();
 
   const searchParams = useSearchParams();
   const version = useStorageVersion();
@@ -759,24 +763,51 @@ export default function PixelArtPage() {
     pushHistory(next, next.length - 1, activeLayer);
   }
 
-  function duplicateFrame() {
-    const clone: FrameData = JSON.parse(JSON.stringify(frames[activeFrame]));
+  function duplicateFrame(index = activeFrame) {
+    const clone: FrameData = JSON.parse(JSON.stringify(frames[index]));
     clone.id = uuid();
     clone.layers = clone.layers.map((l) => ({ ...l, id: uuid() }));
     const next = [...frames];
-    next.splice(activeFrame + 1, 0, clone);
+    next.splice(index + 1, 0, clone);
     setFrames(next);
-    setActiveFrame(activeFrame + 1);
-    pushHistory(next, activeFrame + 1, activeLayer);
+    setActiveFrame(index + 1);
+    pushHistory(next, index + 1, activeLayer);
   }
 
-  function deleteFrame() {
+  function deleteFrame(index = activeFrame) {
     if (frames.length <= 1) return;
-    const next = frames.filter((_, i) => i !== activeFrame);
-    const newActive = Math.min(activeFrame, next.length - 1);
+    const next = frames.filter((_, i) => i !== index);
+    const newActive = Math.min(index, next.length - 1);
     setFrames(next);
     setActiveFrame(newActive);
     pushHistory(next, newActive, activeLayer);
+  }
+
+  function moveFrame(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= frames.length) return;
+    const next = [...frames];
+    [next[index], next[target]] = [next[target], next[index]];
+    setFrames(next);
+    setActiveFrame(target);
+    pushHistory(next, target, activeLayer);
+  }
+
+  async function copyFrameAsPng(index: number) {
+    const dataUrl = await compositeFrame(frames[index], canvasW, canvasH);
+    const isCopied = await copyToSystemClipboard({ kind: "png", dataUrl });
+    showToast({ message: isCopied ? "Copied" : "Couldn't copy: the browser blocked the clipboard" });
+  }
+
+  function frameMenuEntries(index: number): ContextMenuEntry[] {
+    return [
+      { kind: "item", key: "duplicate", label: "Duplicate", onSelect: () => duplicateFrame(index) },
+      { kind: "item", key: "delete", label: "Delete", danger: true, disabled: frames.length <= 1, onSelect: () => deleteFrame(index) },
+      { kind: "item", key: "copy-png", label: "Copy as PNG", onSelect: () => void copyFrameAsPng(index) },
+      { kind: "separator", key: "move-separator" },
+      { kind: "item", key: "move-left", label: "Move left", disabled: index === 0, onSelect: () => moveFrame(index, -1) },
+      { kind: "item", key: "move-right", label: "Move right", disabled: index === frames.length - 1, onSelect: () => moveFrame(index, 1) },
+    ];
   }
 
   // ── layer management ──
@@ -1378,6 +1409,7 @@ export default function PixelArtPage() {
                     boxShadow: selected ? "0 0 0 1px var(--accent)" : undefined,
                   }}
                   title={`Frame ${i + 1}`}
+                  {...menuTriggerProps(() => frameMenuEntries(i), `Frame ${i + 1}`)}
                 >
                   {frame.layers.filter((l) => l.visible).map((l) => (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -1395,10 +1427,10 @@ export default function PixelArtPage() {
             <button onClick={addFrame} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs" style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }} title="Add an empty frame at the end">
               <FilePlus className="w-3.5 h-3.5" /> New frame
             </button>
-            <button onClick={duplicateFrame} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs" style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }} title="Copy the selected frame, a quick way to make the next pose">
+            <button onClick={() => duplicateFrame()} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs" style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }} title="Copy the selected frame, a quick way to make the next pose">
               <Copy className="w-3.5 h-3.5" /> Duplicate
             </button>
-            <button onClick={deleteFrame} disabled={frames.length <= 1} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs disabled:opacity-40" style={{ color: "var(--red)", border: "1px solid var(--border)" }} title="Delete the selected frame">
+            <button onClick={() => deleteFrame()} disabled={frames.length <= 1} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs disabled:opacity-40" style={{ color: "var(--red)", border: "1px solid var(--border)" }} title="Delete the selected frame">
               <Trash2 className="w-3.5 h-3.5" /> Delete
             </button>
           </div>

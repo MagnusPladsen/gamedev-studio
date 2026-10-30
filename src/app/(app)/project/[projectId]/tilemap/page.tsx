@@ -539,6 +539,7 @@ export default function TilemapPage() {
                     title={s.name}
                     aria-label={`Paint with ${s.name}`}
                     aria-pressed={active}
+                    {...assetTriggerProps({ type: "sprite", id: s.id })}
                   >
                     {src && (
                       // eslint-disable-next-line @next/next/no-img-element

@@ -415,9 +415,12 @@ export default function DiagramsPage() {
       // Linked-asset badge
       const linked = nodeAsset(node);
       if (linked) {
+        const isDeleted = !getAsset(projectId, linked.type, linked.id);
         const bx = node.x + node.width - 2;
         const by = node.y + 2;
-        ctx.fillStyle = ASSET_KINDS[linked.type]?.color ?? "#7c5cfc";
+        ctx.fillStyle = isDeleted
+          ? getComputedStyle(canvas).getPropertyValue("--text-muted").trim() || "#555570"
+          : ASSET_KINDS[linked.type]?.color ?? "#7c5cfc";
         ctx.beginPath();
         ctx.arc(bx, by, 7, 0, Math.PI * 2);
         ctx.fill();
@@ -454,7 +457,7 @@ export default function DiagramsPage() {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(`${Math.round(z * 100)}%`, rect.width - 45, rect.height - 20);
-  }, []);
+  }, [projectId]);
 
   // Animation loop
   useEffect(() => {
@@ -906,6 +909,7 @@ export default function DiagramsPage() {
 
   const selectedNode = current?.nodes.find((n) => n.id === selectedNodeId) ?? null;
   const selectedAsset = selectedNode ? nodeAsset(selectedNode) : undefined;
+  const selectedAssetName = selectedAsset ? getAsset(projectId, selectedAsset.type, selectedAsset.id)?.name : undefined;
   const projectAssets = selectedNode ? listAssets(projectId) : [];
 
   // --- Editor view ---
@@ -1114,16 +1118,18 @@ export default function DiagramsPage() {
                 })}
               </select>
             </label>
-            {selectedAsset && (
+            {selectedAsset && (selectedAssetName ? (
               <Link
                 href={assetHref(projectId, selectedAsset.type, selectedAsset.id)}
                 className="flex items-center gap-1 text-xs hover:underline"
                 style={{ color: "var(--accent)" }}
               >
                 <ExternalLink className="w-3 h-3" />
-                Open {getAsset(projectId, selectedAsset.type, selectedAsset.id)?.name ?? "asset"}
+                Open {selectedAssetName}
               </Link>
-            )}
+            ) : (
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Linked asset was deleted</span>
+            ))}
           </div>
         )}
 
