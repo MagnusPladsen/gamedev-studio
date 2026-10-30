@@ -7,6 +7,7 @@ import type { AssetType } from "@/types";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, listAssets, type AssetSummary } from "@/lib/assets";
 import { addLink, getRelated, removeLink } from "@/lib/links";
 import { useStorageVersion } from "@/hooks/useStorage";
+import { useAssetMenu } from "@/components/AssetContextMenu";
 
 interface Props {
   projectId: string;
@@ -26,6 +27,7 @@ function Thumb({ asset }: { asset: AssetSummary }) {
 }
 
 export function LinkedAssets({ projectId, type, id, layout = "panel" }: Props) {
+  const { assetTriggerProps } = useAssetMenu();
   const version = useStorageVersion();
   const [picking, setPicking] = useState(false);
   const [query, setQuery] = useState("");
@@ -82,6 +84,7 @@ export function LinkedAssets({ projectId, type, id, layout = "panel" }: Props) {
         {related.map((r) => (
           <div
             key={`${r.type}:${r.id}`}
+            {...assetTriggerProps({ type: r.type, id: r.id })}
             className="group flex items-center gap-1.5 pl-1.5 pr-1 py-0.5 rounded text-xs max-w-full"
             style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}
             title={r.excerpt ? `${ASSET_KINDS[r.type].label}: ${r.excerpt}` : ASSET_KINDS[r.type].label}

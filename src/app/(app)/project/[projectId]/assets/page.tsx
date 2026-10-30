@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   Search,
   Link2,
   Download,
+  X,
 } from "lucide-react";
 import { storage, PROJECT_COLLECTIONS } from "@/lib/storage";
 import { isExample } from "@/lib/examples";
@@ -15,8 +16,11 @@ import { ASSET_ICONS } from "@/components/asset-icons";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, listAssets } from "@/lib/assets";
 import { getRelated } from "@/lib/links";
+import { getAssetName, getStoredAsset } from "@/lib/asset-actions";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import { useStorageVersion } from "@/hooks/useStorage";
-import type { AssetType } from "@/types";
+import type { AssetRef, AssetType } from "@/types";
 
 const ASSET_COLLECTIONS = PROJECT_COLLECTIONS.filter((c) => c !== "links");
 
@@ -35,9 +39,22 @@ const DESCRIPTIONS: Record<AssetType, string> = {
   model: "Chunky 3D props and characters",
 };
 
+function parseLinksParam(value: string | null): AssetRef | null {
+  if (!value) return null;
+  const separator = value.indexOf(":");
+  const type = value.slice(0, separator);
+  const id = value.slice(separator + 1);
+  if (separator < 1 || !id || !(ASSET_TYPES as string[]).includes(type)) return null;
+  return { type: type as AssetType, id };
+}
+
 export default function AssetsPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
   const version = useStorageVersion();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<AssetType | "all">("all");
@@ -52,9 +69,22 @@ export default function AssetsPage() {
     return c;
   }, [all]);
 
+  const linksRef = parseLinksParam(searchParams.get("links"));
+  const linksKey = linksRef ? `${linksRef.type}:${linksRef.id}` : null;
+  const linksName = useMemo(() => {
+    const stored = linksRef && getStoredAsset(projectId, linksRef);
+    return linksRef && stored ? getAssetName(linksRef.type, stored) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linksKey, projectId, version]);
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const linkedKeys =
+      linksRef && linksName
+        ? new Set([linksKey, ...getRelated(projectId, linksRef.type, linksRef.id).map((r) => `${r.type}:${r.id}`)])
+        : null;
     return all
+      .filter((a) => !linkedKeys || linkedKeys.has(`${a.type}:${a.id}`))
       .filter((a) => (filter === "all" || a.type === filter) && (!q || a.name.toLowerCase().includes(q)))
       .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
       .map((a) => {
@@ -66,7 +96,7 @@ export default function AssetsPage() {
         };
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, query, filter, projectId, version]);
+  }, [all, query, filter, projectId, version, linksKey, linksName]);
 
   if (!project) {
     return (
@@ -153,6 +183,7 @@ export default function AssetsPage() {
           Everything in this project
         </h2>
         <div className="flex items-center gap-2">
+          <PasteButton />
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as AssetType | "all")}
@@ -179,16 +210,36 @@ export default function AssetsPage() {
         </div>
       </div>
 
+      {linksName && (
+        <div
+          className="flex items-center gap-2 mb-3 px-3 py-1.5 rounded-lg text-xs w-fit max-w-full"
+          style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+        >
+          <Link2 className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+          <span className="truncate">Showing {linksName} and its links</span>
+          <button
+            type="button"
+            onClick={() => router.replace(pathname, { scroll: false })}
+            title="Show everything"
+            aria-label="Show everything"
+            className="shrink-0"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {shown.length === 0 ? (
-        <p className="text-sm py-10 text-center rounded-xl border border-dashed" style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}>
+        <p {...pasteTriggerProps()} className="text-sm py-10 text-center rounded-xl border border-dashed" style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}>
           {all.length === 0 ? "Nothing saved yet. Pick a tool above to start." : "No matches."}
         </p>
       ) : (
-        <div className="rounded-xl border divide-y" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
+        <div {...pasteTriggerProps()} className="rounded-xl border divide-y" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
           {shown.map((a) => {
             const kind = ASSET_KINDS[a.type];
             return (
-              <div key={`${a.type}:${a.id}`} className="flex items-center gap-3 px-4 py-2.5" style={{ borderColor: "var(--border)" }}>
+              <div key={`${a.type}:${a.id}`} {...assetTriggerProps({ type: a.type, id: a.id })} className="flex items-center gap-3 px-4 py-2.5" style={{ borderColor: "var(--border)" }}>
                 {a.thumbnail ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={a.thumbnail} alt="" className="w-6 h-6 shrink-0" style={{ imageRendering: "pixelated" }} />
@@ -237,6 +288,7 @@ export default function AssetsPage() {
                     )}
                   </div>
                 )}
+                <AssetMenuButton asset={{ type: a.type, id: a.id }} label={a.name} />
               </div>
             );
           })}
