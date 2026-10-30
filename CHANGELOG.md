@@ -1,0 +1,30 @@
+# Changelog
+
+All notable changes to GameDev Studio. Versions follow [semantic versioning](https://semver.org);
+while in beta (0.x), minor versions may change how projects are stored. Export your projects before upgrading
+a self-hosted copy.
+
+## [0.1.0-beta] - 2026-10-30
+
+First public beta.
+
+### Tools
+- **Pixel Art:** layers, animation frames, onion skinning, undo/redo, PNG and sprite sheet export
+- **Music:** piano roll with melody, harmony, bass and drum channels; WAV export
+- **SFX:** retro sound effect generator with presets, sliders, randomize/mutate; WAV export
+- **Tilemap:** paint levels with your own sprites on multiple layers; fill tool; PNG export
+- **Diagrams:** flow charts and state machines; nodes can point at any asset
+- **Story:** wiki-style `[[links]]` with hover summaries, autocomplete, backlinks, graph view, templates
+- **Dialogue:** branching conversations with choices, conditions and a play-through preview; JSON export
+- **Palettes:** shared palettes with PICO-8, Game Boy, NES, Endesga 16 and Sweetie 16 presets
+- **Sprite sheets:** pack sprites and frames into a PNG plus a JSON atlas
+
+### Everything else
+- Projects keep each game's assets separate; export/import a whole project as one JSON file
+- Any asset can link to any other, and the project page lists everything with its links
+- Saves in the browser by default; optional sign-in (GitHub or email link) syncs to the cloud and moves
+  browser projects into the account
+- Optional saving to a folder on your computer (Chrome/Edge) for self-hosting
+- Hand-made example assets in every tool to start from
+
+[0.1.0-beta]: https://github.com/MagnusPladsen/gamedev-studio/releases/tag/v0.1.0-beta

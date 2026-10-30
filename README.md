@@ -1,10 +1,21 @@
 # GameDev Studio <sup>beta</sup>
 
+[![Live site](https://img.shields.io/badge/live-gamedev--studio.pladsen.dev-7c5cfc?style=flat-square)](https://gamedev-studio.pladsen.dev)
+[![Status: beta](https://img.shields.io/badge/status-beta-fbbf24?style=flat-square)](#)
+[![Latest release](https://img.shields.io/github/v/release/MagnusPladsen/gamedev-studio?include_prereleases&style=flat-square&label=release)](https://github.com/MagnusPladsen/gamedev-studio/releases)
+[![License: MIT](https://img.shields.io/github/license/MagnusPladsen/gamedev-studio?style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/MagnusPladsen/gamedev-studio?style=flat-square)](https://github.com/MagnusPladsen/gamedev-studio/stargazers)
+[![Forks](https://img.shields.io/github/forks/MagnusPladsen/gamedev-studio?style=flat-square)](https://github.com/MagnusPladsen/gamedev-studio/forks)
+[![Open issues](https://img.shields.io/github/issues/MagnusPladsen/gamedev-studio?style=flat-square)](https://github.com/MagnusPladsen/gamedev-studio/issues)
+[![Last commit](https://img.shields.io/github/last-commit/MagnusPladsen/gamedev-studio?style=flat-square)](https://github.com/MagnusPladsen/gamedev-studio/commits/main)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=nextdotjs)](https://nextjs.org)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-34d399?style=flat-square)](#contributing)
+
 A free, open source game development toolkit. Create pixel art, music, sound effects, tilemaps, dialogue trees, story worlds and logic diagrams, all in one app where everything links together.
 
 **No watermarks. No paywalls. No account required.** Everything you make is yours.
 
-Live at **[gamedev-studio.pladsen.dev](https://gamedev-studio.pladsen.dev)**
+**[Open the app →](https://gamedev-studio.pladsen.dev)** &nbsp;·&nbsp; [Download the latest release](https://github.com/MagnusPladsen/gamedev-studio/releases/latest) &nbsp;·&nbsp; [Report a bug](https://github.com/MagnusPladsen/gamedev-studio/issues/new)
 
 > **Beta:** GameDev Studio is under active development. Features may change and bugs are expected.
 > Use *Export project* now and then to keep a backup, and please [open an issue](https://github.com/MagnusPladsen/gamedev-studio/issues) if something breaks.
@@ -40,15 +51,27 @@ Every tool ships with small hand-made examples to edit, so what you export is yo
 
 ## Run it yourself
 
+You need [Node.js](https://nodejs.org) 20.9 or newer.
+
+**With git**
+
 ```bash
 git clone https://github.com/MagnusPladsen/gamedev-studio.git
 cd gamedev-studio
 npm install
-npm run dev
+npm run build
+npm start
 ```
 
-Open <http://localhost:3000>. It works without any configuration. Use *Save to a local
-folder* to keep your projects on disk.
+**Without git:** download the source zip from the [latest release](https://github.com/MagnusPladsen/gamedev-studio/releases/latest),
+unzip it, and run the same `npm install`, `npm run build`, `npm start` commands inside the folder.
+
+Open <http://localhost:3000>. It works without any configuration. Use *Save to a local folder* to keep your
+projects on disk. (Use `npm run dev` instead of build + start if you want to change the code.)
+
+**Your own online copy:**
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FMagnusPladsen%2Fgamedev-studio)
 
 ### Optional: cloud sync with Supabase
 
