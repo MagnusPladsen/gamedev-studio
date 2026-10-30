@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { useState, Suspense } from "react";
 import { SyncProvider, useSync } from "@/components/SyncProvider";
+import { ToastProvider } from "@/components/Toast";
+import { AssetContextMenuProvider } from "@/components/AssetContextMenu";
 import { AccountPanel } from "@/components/AccountPanel";
 import { BetaBadge } from "@/components/BetaBadge";
 import { ASSET_KINDS } from "@/lib/assets";
@@ -228,7 +230,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
     }>
       <SyncProvider>
-        <AppSidebar>{children}</AppSidebar>
+        <ToastProvider>
+          <AssetContextMenuProvider>
+            <AppSidebar>{children}</AppSidebar>
+          </AssetContextMenuProvider>
+        </ToastProvider>
       </SyncProvider>
     </Suspense>
   );
