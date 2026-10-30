@@ -15,6 +15,8 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { SoundEffect, SfxParams } from "@/types";
 
 const SAMPLE_RATE = 44100;
@@ -343,6 +345,7 @@ export default function SfxPage() {
   }, [volume]);
   const params = useParams();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const storeVersion = useStorageVersion();
   const [sfxParams, setSfxParams] = useState<SfxParams>({ ...DEFAULT_PARAMS });
@@ -681,19 +684,24 @@ export default function SfxPage() {
           </div>
 
           <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-            <div className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
-              YOUR SOUNDS ({savedSounds.length})
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                YOUR SOUNDS ({savedSounds.length})
+              </span>
+              <PasteButton type="sound" />
             </div>
             <ExamplesBar projectId={projectId} collections={["sounds"]} className="mb-2" />
             {savedSounds.length === 0 ? (
-              <p className="text-xs py-4 text-center" style={{ color: "var(--text-muted)" }}>
+              <p {...pasteTriggerProps("sound")} className="text-xs py-4 text-center" style={{ color: "var(--text-muted)" }}>
                 Generate a sound and press Keep, or add the examples.
               </p>
             ) : (
-              <div className="space-y-1 max-h-96 overflow-y-auto">
+              <div {...pasteTriggerProps("sound")} className="space-y-1 max-h-96 overflow-y-auto">
                 {savedSounds.map((sound) => (
                   <div
                     key={sound.id}
+                    {...assetTriggerProps({ type: "sound", id: sound.id })}
+                    tabIndex={0}
                     className="group flex items-center justify-between p-2 rounded-lg cursor-pointer"
                     style={{ background: activeId === sound.id ? "var(--bg-hover)" : "transparent" }}
                     onClick={() => loadSaved(sound)}
@@ -730,6 +738,7 @@ export default function SfxPage() {
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
+                    <AssetMenuButton asset={{ type: "sound", id: sound.id }} label={sound.name} />
                   </div>
                 ))}
               </div>

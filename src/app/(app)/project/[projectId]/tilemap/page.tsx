@@ -24,6 +24,8 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import { useHistory } from "@/hooks/useHistory";
 import { useAutosave } from "@/hooks/useAutosave";
 import type { TilemapData, TilemapLayer, Sprite } from "@/types";
@@ -130,6 +132,7 @@ const secondaryBtn = { color: "var(--text-primary)", border: "1px solid var(--bo
 export default function TilemapPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const version = useStorageVersion();
 
@@ -441,9 +444,12 @@ export default function TilemapPage() {
         <div className="p-3 border-b" style={{ borderColor: "var(--border)" }}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Tilemaps</span>
-            <button onClick={openNewForm} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New tilemap" aria-label="New tilemap">
-              <Plus className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <PasteButton type="tilemap" />
+              <button onClick={openNewForm} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New tilemap" aria-label="New tilemap">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           {showNew && (
             <div className="space-y-1.5 mb-2">
@@ -473,10 +479,12 @@ export default function TilemapPage() {
               </div>
             </div>
           )}
-          <div className="space-y-0.5">
+          <div {...pasteTriggerProps("tilemap")} className="space-y-0.5">
             {tilemaps.map((tm) => (
               <div
                 key={tm.id}
+                {...assetTriggerProps({ type: "tilemap", id: tm.id })}
+                tabIndex={0}
                 className="group flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer"
                 style={{ background: current?.id === tm.id ? "var(--bg-hover)" : "transparent", color: "var(--text-primary)" }}
                 onClick={() => selectTilemap(tm)}
@@ -491,6 +499,7 @@ export default function TilemapPage() {
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
+                <AssetMenuButton asset={{ type: "tilemap", id: tm.id }} label={tm.name} />
               </div>
             ))}
           </div>

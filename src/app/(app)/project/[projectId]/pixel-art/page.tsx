@@ -42,6 +42,8 @@ import { LinkedAssets } from "@/components/LinkedAssets";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { Sprite, SpriteFrame } from "@/types";
 
 // ─── types ───────────────────────────────────────────────────────────
@@ -192,6 +194,7 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export default function PixelArtPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
 
   const searchParams = useSearchParams();
   const version = useStorageVersion();
@@ -908,7 +911,10 @@ export default function PixelArtPage() {
     <div style={panelStyle}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Sprites</span>
-        <button onClick={() => setShowNewDialog((v) => !v)} style={smallBtn} title="New sprite" aria-label="New sprite"><Plus className="w-3 h-3" /></button>
+        <div className="flex items-center gap-1">
+          <PasteButton type="sprite" />
+          <button onClick={() => setShowNewDialog((v) => !v)} style={smallBtn} title="New sprite" aria-label="New sprite"><Plus className="w-3 h-3" /></button>
+        </div>
       </div>
       <ExamplesBar projectId={projectId} collections={["sprites"]} className="mb-2" />
       {showNewDialog && (
@@ -944,10 +950,12 @@ export default function PixelArtPage() {
           </div>
         </div>
       )}
-      <div className="space-y-0.5 max-h-32 max-md:max-h-48 overflow-y-auto">
+      <div {...pasteTriggerProps("sprite")} className="space-y-0.5 max-h-32 max-md:max-h-48 overflow-y-auto">
         {sprites.map((s) => (
           <div
             key={s.id}
+            {...assetTriggerProps({ type: "sprite", id: s.id })}
+            tabIndex={0}
             className="group flex items-center gap-1.5 w-full text-xs px-2 py-1 rounded cursor-pointer hover:bg-[var(--bg-hover)]"
             onClick={() => loadSprite(s)}
             style={{
@@ -969,6 +977,7 @@ export default function PixelArtPage() {
             >
               <Trash2 className="w-3 h-3" />
             </button>
+            <AssetMenuButton asset={{ type: "sprite", id: s.id }} label={s.name} />
           </div>
         ))}
         {sprites.length === 0 && (

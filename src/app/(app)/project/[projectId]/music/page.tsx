@@ -27,6 +27,8 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { MusicTrack, MusicChannel, MusicNote } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -113,6 +115,7 @@ function fitPatternLength(track: MusicTrack): number {
 export default function MusicPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
 
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [activeTrack, setActiveTrack] = useState<MusicTrack | null>(null);
@@ -668,6 +671,7 @@ export default function MusicPage() {
         {tracksOpen && <div className="md:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setTracksOpen(false)} />}
         {/* Track list sidebar (a drawer on phones) */}
         <div
+          {...pasteTriggerProps("music")}
           className={`w-48 border-r flex flex-col shrink-0 overflow-y-auto ${
             tracksOpen ? "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-64 max-md:shadow-2xl" : "max-md:hidden"
           }`}
@@ -675,13 +679,18 @@ export default function MusicPage() {
         >
           <div className="p-2 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
             <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Tracks</span>
-            <button onClick={newTrack} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New track" aria-label="New track">
-              <Plus className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <PasteButton type="music" />
+              <button onClick={newTrack} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New track" aria-label="New track">
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
           {trackList.map((t) => (
             <div
               key={t.id}
+              {...assetTriggerProps({ type: "music", id: t.id })}
+              tabIndex={0}
               className="group flex items-center gap-1 px-2 py-1.5 cursor-pointer text-xs border-b"
               style={{
                 background: t.id === activeTrack?.id ? "var(--bg-hover)" : "transparent",
@@ -700,6 +709,7 @@ export default function MusicPage() {
               >
                 <Trash2 className="w-3 h-3" />
               </button>
+              <AssetMenuButton asset={{ type: "music", id: t.id }} label={t.name} />
             </div>
           ))}
           <div className="mt-auto p-2 border-t" style={{ borderColor: "var(--border)" }}>

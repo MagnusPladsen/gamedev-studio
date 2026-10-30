@@ -14,6 +14,8 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { ExportMenu } from "@/components/ExportMenu";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { useAssetMenu } from "@/components/AssetContextMenu";
+import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
 import type { Sprite, SpriteSheet } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -68,6 +70,7 @@ interface Selection {
 export default function SpriteSheetPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { assetTriggerProps, pasteTriggerProps } = useAssetMenu();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const version = useStorageVersion();
 
@@ -263,9 +266,12 @@ export default function SpriteSheetPage() {
         <div className="p-3 border-b" style={{ borderColor: "var(--border)" }}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Sprite Sheets</span>
-            <button onClick={openNewForm} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New sprite sheet" aria-label="New sprite sheet">
-              <Plus className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <PasteButton type="spritesheet" />
+              <button onClick={openNewForm} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New sprite sheet" aria-label="New sprite sheet">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           {showNew && (
             <div className="mb-2 space-y-1.5">
@@ -285,10 +291,12 @@ export default function SpriteSheetPage() {
               </div>
             </div>
           )}
-          <div className="space-y-0.5">
+          <div {...pasteTriggerProps("spritesheet")} className="space-y-0.5">
             {sheets.map((s) => (
               <div
                 key={s.id}
+                {...assetTriggerProps({ type: "spritesheet", id: s.id })}
+                tabIndex={0}
                 className="group flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer"
                 style={{ background: current?.id === s.id ? "var(--bg-hover)" : "transparent", color: "var(--text-primary)" }}
                 onClick={() => {
@@ -306,6 +314,7 @@ export default function SpriteSheetPage() {
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
+                <AssetMenuButton asset={{ type: "spritesheet", id: s.id }} label={s.name} />
               </div>
             ))}
           </div>
