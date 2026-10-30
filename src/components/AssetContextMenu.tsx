@@ -51,6 +51,8 @@ export interface MenuTriggerProps {
   onPointerCancel(e: React.PointerEvent<Element>): void;
   onPointerLeave(e: React.PointerEvent<Element>): void;
   onClickCapture(e: React.MouseEvent<Element>): void;
+  /** Menu key / Shift+F10: Chrome on macOS fires no `contextmenu` for them, so the menu opens from the key itself. */
+  onKeyDown(e: React.KeyboardEvent<Element>): void;
 }
 
 export interface AssetMenuApi {
@@ -117,6 +119,7 @@ const COPY_FAILED_MESSAGE = "Couldn't copy: the browser blocked the clipboard";
 const ACTION_FAILED_MESSAGE = "Something went wrong";
 const ISSUE_ORDER_STEP = 1000;
 const PROJECT_PATH = /\/project\/([^/]+)/;
+const FOLLOW_UP_CONTEXT_MENU_MS = 1000;
 
 const AssetMenuApiContext = createContext<AssetMenuApi | null>(null);
 
@@ -432,6 +435,29 @@ function isNativeMenuTarget(target: EventTarget | null): boolean {
   return shouldUseNativeMenu(target instanceof Element ? target : null, selectedText);
 }
 
+function isMenuKey(event: React.KeyboardEvent<Element>): boolean {
+  return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
+}
+
+/**
+ * Windows and Linux follow the menu key with a `contextmenu` event (Menu key: after keyup), which would open
+ * a second menu or the browser's own over ours. Swallow it until the key is released, or a second at most.
+ */
+function swallowFollowUpContextMenu(): void {
+  const swallow = (event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const stop = (): void => {
+    window.removeEventListener("contextmenu", swallow, true);
+    window.removeEventListener("keyup", stopAfterKeyUp, true);
+  };
+  const stopAfterKeyUp = (): void => void setTimeout(stop, 0);
+  window.addEventListener("contextmenu", swallow, true);
+  window.addEventListener("keyup", stopAfterKeyUp, true);
+  setTimeout(stop, FOLLOW_UP_CONTEXT_MENU_MS);
+}
+
 function useTriggerFactory(): (resolve: ResolveOpen) => MenuTriggerProps {
   const lastPointerType = useLastPointerType();
   const [{ longPress, press, consumeClick }] = useState(createPressTracker);
@@ -463,6 +489,16 @@ function useTriggerFactory(): (resolve: ResolveOpen) => MenuTriggerProps {
         if (!consumeClick()) return;
         e.preventDefault();
         e.stopPropagation();
+      },
+      onKeyDown(e) {
+        if (!isMenuKey(e) || isNativeMenuTarget(e.target)) return;
+        const open = resolve();
+        if (!open) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const opener = e.target instanceof HTMLElement ? e.target : (e.currentTarget as HTMLElement);
+        swallowFollowUpContextMenu();
+        open(anchorPoint({ clientX: 0, clientY: 0 }, opener.getBoundingClientRect()), opener);
       },
     }),
     [lastPointerType, longPress, press, consumeClick],
