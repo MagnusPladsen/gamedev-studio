@@ -24,9 +24,10 @@ import { SyncProvider, useSync } from "@/components/SyncProvider";
 import { AccountPanel } from "@/components/AccountPanel";
 import { BetaBadge } from "@/components/BetaBadge";
 import { ASSET_KINDS } from "@/lib/assets";
+import { storage } from "@/lib/storage";
 
 /** Tints the shared surface colours with a tool's colour, so every editor inside picks it up. */
-function toolTheme(color?: string): React.CSSProperties {
+function toolTheme(color?: string, onAccent = "#0b0b10"): React.CSSProperties {
   if (!color) return {};
   const mix = (pct: number, base: string) => `color-mix(in srgb, ${color} ${pct}%, ${base})`;
   return {
@@ -37,13 +38,17 @@ function toolTheme(color?: string): React.CSSProperties {
     "--bg-hover": mix(11, "#1e1e2a"),
     "--border": mix(14, "#2a2a3a"),
     "--border-hover": mix(22, "#3a3a4f"),
+    "--accent": color,
+    "--accent-hover": `color-mix(in srgb, ${color} 85%, #000)`,
+    "--accent-glow": `color-mix(in srgb, ${color} 16%, transparent)`,
+    "--on-accent": onAccent,
     background: "var(--bg-primary)",
   } as React.CSSProperties;
 }
 
 const toolNav = [
   { icon: LayoutDashboard, name: "Assets", path: "assets", color: "var(--text-secondary)" },
-  { icon: Paintbrush, name: "Pixel Art", path: "pixel-art", color: ASSET_KINDS.sprite.color },
+  { icon: Paintbrush, name: "Pixel Art", path: "pixel-art", color: ASSET_KINDS.sprite.color, onAccent: "#fff" },
   { icon: Music, name: "Music", path: "music", color: ASSET_KINDS.music.color },
   { icon: Volume2, name: "SFX", path: "sfx", color: ASSET_KINDS.sound.color },
   { icon: Grid3X3, name: "Tilemap", path: "tilemap", color: ASSET_KINDS.tilemap.color },
@@ -52,7 +57,7 @@ const toolNav = [
   { icon: NotebookPen, name: "Notebook", path: "notebook", color: ASSET_KINDS.note.color },
   { icon: MessageSquare, name: "Dialogue", path: "dialogue", color: ASSET_KINDS.dialogue.color },
   { icon: Palette, name: "Palettes", path: "palettes", color: ASSET_KINDS.palette.color },
-  { icon: Package, name: "Sprites", path: "sprites", color: ASSET_KINDS.spritesheet.color },
+  { icon: Package, name: "Sprite Sheets", path: "sprites", color: ASSET_KINDS.spritesheet.color },
 ];
 
 function AppSidebar({ children }: { children: React.ReactNode }) {
@@ -63,18 +68,14 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
   const projectMatch = pathname.match(/\/project\/([^/]+)/);
   const projectId = projectMatch?.[1];
   const isProjectView = !!projectId;
-  const activeTool = toolNav.find((t) => t.path !== "assets" && pathname.startsWith(`/project/${projectId}/${t.path}`));
+  const activeTool = toolNav.find((t) => t.path !== "assets" && pathname.startsWith(`/project/${projectId}/${t.path}`)) as
+    | ((typeof toolNav)[number] & { onAccent?: string })
+    | undefined;
+  const projectName = projectId ? storage.getById("projects", projectId)?.name : undefined;
+  const pageTitle = activeTool?.name ?? (pathname.endsWith("/assets") ? "Project" : pathname === "/projects" ? "Projects" : "GameDev Studio");
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg-primary)" }}>
-      {/* Mobile toggle */}
-      <button
-        className="fixed top-3 left-3 z-50 p-2 rounded-lg md:hidden"
-        style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-      >
-        {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </button>
+    <div className="flex h-[100dvh] overflow-hidden" style={{ background: "var(--bg-primary)" }}>
 
       {/* Sidebar */}
       <aside
@@ -163,8 +164,38 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
         />
       )}
 
+      <div className="flex-1 min-w-0 flex flex-col">
+      {/* Phone top bar: menu + where you are. Hidden from md up, so desktop is unchanged. */}
+      <header
+        className="md:hidden flex items-center gap-2 h-12 shrink-0 border-b"
+        style={{
+          background: "var(--bg-secondary)",
+          borderColor: "var(--border)",
+          paddingLeft: "max(8px, env(safe-area-inset-left, 0px))",
+          paddingRight: "max(12px, env(safe-area-inset-right, 0px))",
+        }}
+      >
+        <button
+          className="p-2 rounded-lg"
+          style={{ color: "var(--text-primary)" }}
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          aria-label={sidebarOpen ? "Close menu" : "Open menu"}
+        >
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+        {activeTool && <activeTool.icon className="w-4 h-4 shrink-0" style={{ color: activeTool.color }} />}
+        <span className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+          {pageTitle}
+        </span>
+        {projectName && (
+          <span className="text-xs truncate ml-auto max-w-[45%]" style={{ color: "var(--text-muted)" }}>
+            {projectName}
+          </span>
+        )}
+      </header>
+
       {/* Main content */}
-      <main className="flex-1 overflow-auto" style={toolTheme(activeTool?.color)}>
+      <main className="flex-1 min-h-0 overflow-auto" style={toolTheme(activeTool?.color, activeTool?.onAccent)}>
         {ready ? (
           <div key={generation} className="h-full">
             {children}
@@ -175,6 +206,7 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

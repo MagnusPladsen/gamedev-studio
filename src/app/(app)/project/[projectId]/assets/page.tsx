@@ -96,7 +96,7 @@ export default function AssetsPage() {
 
   return (
     <div className="p-6 md:p-10 max-w-5xl mx-auto">
-      <div className="mb-8 flex items-start justify-between gap-4 pl-10 md:pl-0">
+      <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
             {project.name}

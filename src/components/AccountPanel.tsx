@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Cloud, CloudOff, FolderOpen, FolderSync, HardDrive, Loader2, LogOut, Mail, AlertTriangle, Check, X } from "lucide-react";
 import { useSync } from "./SyncProvider";
 
@@ -19,6 +20,12 @@ function SignInDialog({ onClose }: { onClose(): void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   async function sendLink(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
@@ -31,14 +38,20 @@ function SignInDialog({ onClose }: { onClose(): void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="signin-title"
+    >
       <div
-        className="w-full max-w-sm rounded-xl p-5"
+        className="w-full max-w-md rounded-2xl p-6 sm:p-7 shadow-2xl"
         style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-1">
-          <h2 className="font-semibold" style={{ color: "var(--text-primary)" }}>
+          <h2 id="signin-title" className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
             Sign in to sync
           </h2>
           <button onClick={onClose} style={{ color: "var(--text-muted)" }} aria-label="Close">
@@ -202,7 +215,7 @@ export function AccountPanel() {
         Everything you make is yours: free downloads, no watermark, no attribution needed.
       </p>
 
-      {dialog && <SignInDialog onClose={() => setDialog(false)} />}
+      {dialog && createPortal(<SignInDialog onClose={() => setDialog(false)} />, document.body)}
     </div>
   );
 }

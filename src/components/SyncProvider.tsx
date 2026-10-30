@@ -43,6 +43,8 @@ interface SyncContextValue {
   connectFolder(): Promise<void>;
   reconnectFolder(): Promise<void>;
   disconnectFolder(): Promise<void>;
+  /** Re-mount the open editor so it re-reads storage (after bulk changes like adding examples). */
+  reloadView(): void;
 }
 
 const SyncContext = createContext<SyncContextValue | null>(null);
@@ -223,6 +225,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         if (!handle) return;
         const perm = await handle.requestPermission({ mode: "readwrite" });
         if (perm === "granted") await attachFolder(handle).catch((e: Error) => reportError(e.message));
+      },
+      reloadView() {
+        setGeneration((g) => g + 1);
       },
       async disconnectFolder() {
         folderRef.current?.detach();
