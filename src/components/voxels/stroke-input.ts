@@ -25,7 +25,7 @@ interface PointerOrigin {
 interface ActiveStroke {
   pointerId: number;
   lastKey: string;
-  lastHit: RayHit | null;
+  lastValidHit: RayHit | null;
 }
 
 interface PendingTouch extends PointerOrigin {
@@ -58,6 +58,7 @@ export class StrokeInput {
     canvas.addEventListener("pointerup", this.handlePointerUp);
     canvas.addEventListener("pointercancel", this.handlePointerCancel);
     canvas.addEventListener("pointerleave", this.handlePointerLeave);
+    canvas.addEventListener("lostpointercapture", this.handleLostPointerCapture);
   }
 
   refreshHover(): void {
@@ -73,12 +74,13 @@ export class StrokeInput {
     canvas.removeEventListener("pointerup", this.handlePointerUp);
     canvas.removeEventListener("pointercancel", this.handlePointerCancel);
     canvas.removeEventListener("pointerleave", this.handlePointerLeave);
+    canvas.removeEventListener("lostpointercapture", this.handleLostPointerCapture);
   }
 
   private beginStroke(pointerId: number, hit: RayHit | null, shiftKey: boolean): void {
     this.cancelHover();
     this.lastHoverKey = "";
-    this.stroke = { pointerId, lastKey: getHitKey(hit), lastHit: hit };
+    this.stroke = { pointerId, lastKey: getHitKey(hit), lastValidHit: hit };
     this.options.onStroke({ phase: "start", hit, shiftKey });
   }
 
@@ -90,8 +92,9 @@ export class StrokeInput {
     this.beginStroke(pointerId, hit, shiftKey);
   };
 
-  private endStroke(hit: RayHit | null, shiftKey: boolean): void {
+  private endStroke(shiftKey: boolean): void {
     if (!this.stroke) return;
+    const hit = this.stroke.lastValidHit;
     this.stroke = null;
     this.options.onStroke({ phase: "end", hit, shiftKey });
   }
@@ -100,7 +103,9 @@ export class StrokeInput {
     if (this.pending) clearTimeout(this.pending.timer);
     this.pending = null;
     this.tap = null;
-    this.endStroke(null, false);
+    if (!this.stroke) return;
+    this.stroke = null;
+    this.options.onStroke({ phase: "cancel", hit: null, shiftKey: false });
   }
 
   private cancelHover(): void {
@@ -153,7 +158,8 @@ export class StrokeInput {
       this.beginPendingStroke();
     }
     if (this.stroke?.pointerId === event.pointerId) {
-      this.continueStroke(this.stroke, event);
+      if (event.buttons === 0) this.endStroke(event.shiftKey);
+      else this.continueStroke(this.stroke, event);
       return;
     }
     if (event.pointerType !== "touch" && event.buttons === 0) this.trackHover(event);
@@ -164,7 +170,7 @@ export class StrokeInput {
     const key = getHitKey(hit);
     if (key === stroke.lastKey) return;
     stroke.lastKey = key;
-    stroke.lastHit = hit;
+    if (hit) stroke.lastValidHit = hit;
     this.options.onStroke({ phase: "move", hit, shiftKey: event.shiftKey });
   }
 
@@ -181,7 +187,7 @@ export class StrokeInput {
   private readonly handlePointerUp = (event: PointerEvent): void => {
     this.releasePointer(event);
     if (this.pending?.pointerId === event.pointerId) this.beginPendingStroke();
-    if (this.stroke?.pointerId === event.pointerId) this.endStroke(this.stroke.lastHit, event.shiftKey);
+    if (this.stroke?.pointerId === event.pointerId) this.endStroke(event.shiftKey);
     else this.finishTap(event);
     if (event.pointerType !== "touch") this.trackHover(event);
   };
@@ -190,6 +196,15 @@ export class StrokeInput {
     this.releasePointer(event);
     const isOwnPointer = this.pending?.pointerId === event.pointerId || this.stroke?.pointerId === event.pointerId;
     if (isOwnPointer || this.tap?.pointerId === event.pointerId) this.cancelEverything();
+  };
+
+  private readonly handleLostPointerCapture = (event: PointerEvent): void => {
+    this.releasePointer(event);
+    if (this.stroke?.pointerId === event.pointerId) this.endStroke(event.shiftKey);
+    if (this.pending?.pointerId === event.pointerId) {
+      clearTimeout(this.pending.timer);
+      this.pending = null;
+    }
   };
 
   private releasePointer(event: PointerEvent): void {
