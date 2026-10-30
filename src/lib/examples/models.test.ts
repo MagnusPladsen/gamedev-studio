@@ -54,4 +54,14 @@ describe("modelExamples", () => {
     expect(Math.min(...heights)).toBe(0);
     expect(Math.max(...heights)).toBe(15);
   });
+
+  it("keeps the dark outline colour to small details instead of wrapping it round the model", () => {
+    for (const item of items) {
+      const data = decodeVoxels(item.voxels, 16 ** 3);
+      const outline = item.colors.indexOf("#1d1a2b") + 1;
+      const solid = data.filter((value) => value !== 0).length;
+      const dark = outline === 0 ? 0 : data.filter((value) => value === outline).length;
+      expect(dark / solid).toBeLessThan(0.05);
+    }
+  });
 });
