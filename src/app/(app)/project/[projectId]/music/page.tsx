@@ -23,6 +23,8 @@ import { storage } from "@/lib/storage";
 import { useOpenParam } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { VolumeControl } from "@/components/VolumeControl";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
+import { useHistory } from "@/hooks/useHistory";
 import { previewGain, usePreviewVolume } from "@/hooks/usePreviewVolume";
 import type { MusicTrack, MusicChannel, MusicPattern, MusicNote } from "@/types";
 import { v4 as uuid } from "uuid";
@@ -519,12 +521,22 @@ export default function MusicPage() {
     setTracks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
   }
 
+  const history = useHistory(
+    activeTrack,
+    (t) => {
+      if (!t) return;
+      setActiveTrack(t);
+      setTracks((prev) => prev.map((x) => (x.id === t.id ? t : x)));
+    },
+    activeTrack?.id
+  );
+
   function saveTrack() {
     if (!activeTrack) return;
+    // keep the activeTrack reference so saving doesn't create an undo step
     const saved = { ...activeTrack, updatedAt: new Date().toISOString() };
     storage.save("music", saved, projectId);
-    setActiveTrack(saved);
-    setTracks(storage.getAll("music", projectId));
+    setTracks((prev) => prev.map((t) => (t.id === saved.id ? activeTrack : t)));
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1500);
   }
@@ -706,6 +718,7 @@ export default function MusicPage() {
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <div className="flex items-center gap-3">
+          <UndoRedoButtons history={history} />
           <h1 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
             Music Composer
           </h1>

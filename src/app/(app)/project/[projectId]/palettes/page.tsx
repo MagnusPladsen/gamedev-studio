@@ -8,6 +8,8 @@ import type { Palette } from "@/types";
 import { v4 as uuid } from "uuid";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useHistory } from "@/hooks/useHistory";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 
 const PRESET_PALETTES: { name: string; colors: string[] }[] = [
   {
@@ -44,6 +46,16 @@ export default function PalettesPage() {
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+
+  const history = useHistory(
+    selected,
+    (p) => {
+      if (!p || !storage.getById("palettes", p.id, projectId)) return;
+      storage.save("palettes", p, projectId);
+      setSelected(p);
+    },
+    selected?.id
+  );
 
   useOpenParam((id) => {
     const p = storage.getById("palettes", id, projectId);
@@ -196,9 +208,12 @@ export default function PalettesPage() {
         {selected ? (
           <div className="max-w-2xl">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-                {selected.name}
-              </h2>
+              <div className="flex items-center gap-3">
+                <UndoRedoButtons history={history} />
+                <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {selected.name}
+                </h2>
+              </div>
               <button
                 onClick={exportPalette}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"

@@ -8,6 +8,8 @@ import { storage } from "@/lib/storage";
 import { loadImage, spriteFrameSrc } from "@/lib/pixels";
 import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
+import { useHistory } from "@/hooks/useHistory";
 import type { Sprite, SpriteSheet } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -61,6 +63,15 @@ export default function SpriteSheetPage() {
   const [current, setCurrent] = useState<SpriteSheet | null>(null);
   const [selectedSpriteIds, setSelectedSpriteIds] = useState<string[]>([]);
   const [padding, setPadding] = useState(1);
+  const selection = useMemo(() => ({ spriteIds: selectedSpriteIds, padding }), [selectedSpriteIds, padding]);
+  const history = useHistory(
+    selection,
+    (v) => {
+      setSelectedSpriteIds(v.spriteIds);
+      setPadding(v.padding);
+    },
+    current?.id
+  );
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [rendering, setRendering] = useState(false);
@@ -286,6 +297,8 @@ export default function SpriteSheetPage() {
       {/* Main area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="h-10 flex items-center gap-3 px-3 border-b shrink-0" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
+          <UndoRedoButtons history={history} />
+          <div className="w-px h-5" style={{ background: "var(--border)" }} />
           <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
             Padding
             <input

@@ -23,6 +23,8 @@ import { storage } from "@/lib/storage";
 import { getLoadedImage, preloadImages, spriteFrameSrc } from "@/lib/pixels";
 import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
+import { useHistory } from "@/hooks/useHistory";
 import type { TilemapData, TilemapLayer, Sprite } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -198,6 +200,19 @@ export default function TilemapPage() {
     setCurrent(tm);
     setDirty(true);
   }
+
+  // While a stroke is in progress, history sees the map as it was when the stroke began,
+  // so the whole stroke (mousedown → mouseup) becomes one undo step.
+  const [strokeBase, setStrokeBase] = useState<TilemapData | null>(null);
+  const history = useHistory(
+    isPainting ? strokeBase : current,
+    (tm) => {
+      if (!tm) return;
+      update(tm);
+      setSelectedLayer((l) => Math.min(l, tm.layers.length - 1));
+    },
+    current?.id
+  );
 
   function createTilemap() {
     if (!newName.trim()) return;
@@ -445,6 +460,8 @@ export default function TilemapPage() {
       {/* Main canvas area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="h-10 flex items-center gap-2 px-3 border-b shrink-0" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
+          <UndoRedoButtons history={history} />
+          <div className="w-px h-5" style={{ background: "var(--border)" }} />
           {toolBtn("paint", Paintbrush, "Paint")}
           {toolBtn("fill", PaintBucket, "Fill area")}
           {toolBtn("erase", Eraser, "Erase")}
@@ -480,6 +497,7 @@ export default function TilemapPage() {
                   fillAt(e);
                   return;
                 }
+                setStrokeBase(current);
                 setIsPainting(true);
                 paintAt(e);
               }}

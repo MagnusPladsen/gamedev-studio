@@ -8,6 +8,8 @@ import { storage } from "@/lib/storage";
 import { useOpenParam } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { VolumeControl } from "@/components/VolumeControl";
+import { UndoRedoButtons } from "@/components/UndoRedoButtons";
+import { useHistory } from "@/hooks/useHistory";
 import { previewGain, usePreviewVolume } from "@/hooks/usePreviewVolume";
 import type { SoundEffect, SfxParams } from "@/types";
 
@@ -417,6 +419,16 @@ export default function SfxPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // bumps when a different sound is opened, so undo history starts fresh (saving keeps it)
+  const [historyKey, setHistoryKey] = useState(0);
+  const history = useHistory(
+    sfxParams,
+    (p) => {
+      setSfxParams(p);
+      setCurrentBuffer(synthesize(p));
+    },
+    historyKey
+  );
 
   useEffect(() => {
     setSavedSounds(storage.getAll("sounds", projectId));
@@ -467,6 +479,7 @@ export default function SfxPage() {
     playBuffer(buf);
     setSaveName(ex.name);
     setActiveId(null);
+    setHistoryKey((k) => k + 1);
   }
 
   function randomize() {
@@ -516,6 +529,7 @@ export default function SfxPage() {
     setSaveName("");
     setSfxParams({ ...DEFAULT_PARAMS });
     setCurrentBuffer(synthesize(DEFAULT_PARAMS));
+    setHistoryKey((k) => k + 1);
   }
 
   function deleteSound(id: string) {
@@ -536,6 +550,7 @@ export default function SfxPage() {
     const buf = synthesize(sound.params);
     setCurrentBuffer(buf);
     if (play) playBuffer(buf);
+    setHistoryKey((k) => k + 1);
   }
 
   function exportWav() {
@@ -567,9 +582,12 @@ export default function SfxPage() {
 
   return (
     <div className="p-4 md:p-6 h-full overflow-auto" style={{ background: "var(--bg-primary)" }}>
-      <h1 className="text-xl font-bold mb-4" style={{ color: "var(--text-primary)" }}>
-        SFX Generator
-      </h1>
+      <div className="flex items-center gap-3 mb-4">
+        <UndoRedoButtons history={history} />
+        <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
+          SFX Generator
+        </h1>
+      </div>
 
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Left: Controls */}
