@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   Plus,
@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { storage } from "@/lib/storage";
 import { getLoadedImage, preloadImages, spriteFrameSrc } from "@/lib/pixels";
-import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
+import { useConsumedParam, useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -167,14 +167,10 @@ export default function TilemapPage() {
     const tm = storage.getById("tilemaps", id, projectId);
     if (tm) selectTilemap(tm);
   });
-  const tileParam = useSearchParams().get("tile");
-  const handledTileParam = useRef<string | null>(null);
-  useEffect(() => {
-    if (!tileParam || handledTileParam.current === tileParam) return;
-    handledTileParam.current = tileParam;
-    setSelectedTile(tileParam);
+  useConsumedParam("tile", (spriteId) => {
+    setSelectedTile(spriteId);
     setTool("paint");
-  }, [tileParam]);
+  });
   useTrackOpenAsset(current?.id ? { type: "tilemap", id: current?.id } : null);
 
   const requestRedraw = useCallback(() => setRedrawTick((t) => t + 1), []);

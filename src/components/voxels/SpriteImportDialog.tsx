@@ -92,12 +92,12 @@ export function SpriteImportDialog({ projectId, sprites, autoConvertSpriteId, on
   useEffect(() => {
     convertRef.current = convert;
   });
-  const autoConverted = useRef<string | null>(null);
+  const hasAutoConverted = useRef(false);
   useEffect(() => {
-    if (!autoConvertSpriteId || autoConverted.current === autoConvertSpriteId) return;
+    if (!autoConvertSpriteId || hasAutoConverted.current) return;
     const sprite = sprites.find((candidate) => candidate.id === autoConvertSpriteId);
     if (!sprite) return;
-    autoConverted.current = autoConvertSpriteId;
+    hasAutoConverted.current = true;
     void convertRef.current(sprite);
   }, [autoConvertSpriteId, sprites]);
 

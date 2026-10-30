@@ -20,7 +20,7 @@ import { VoxelEmptyState } from "@/components/voxels/VoxelEmptyState";
 import { TOOL_META, VoxelToolbar } from "@/components/voxels/VoxelToolbar";
 import type { VoxelViewportApi } from "@/components/voxels/VoxelViewport";
 import { isTextField } from "@/hooks/useHistory";
-import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
+import { useConsumedParam, useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
 import { addLink } from "@/lib/links";
 import { storage } from "@/lib/storage";
 import { addColor, FALLBACK_COLORS, hexToRgb, MAX_COLORS, remapToPalette } from "@/lib/voxels/colors";
@@ -103,8 +103,6 @@ export default function VoxelsPage(): React.JSX.Element {
   const projectId = useParams().projectId as string;
   const searchParams = useSearchParams();
   const paletteParam = searchParams.get("palette");
-  const fromSpriteParam = searchParams.get("fromSprite");
-  const handledFromSprite = useRef<string | null>(null);
   const version = useStorageVersion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const models = useMemo(() => storage.getAll("models", projectId), [projectId, version]);
@@ -184,12 +182,10 @@ export default function VoxelsPage(): React.JSX.Element {
     });
   }
 
-  useEffect(() => {
-    if (!fromSpriteParam || handledFromSprite.current === fromSpriteParam) return;
-    handledFromSprite.current = fromSpriteParam;
-    setAutoConvertSpriteId(fromSpriteParam);
+  useConsumedParam("fromSprite", (spriteId) => {
+    setAutoConvertSpriteId(spriteId);
     setIsSpriteDialogOpen(true);
-  }, [fromSpriteParam]);
+  });
 
   function closeSpriteDialog(): void {
     setIsSpriteDialogOpen(false);
