@@ -1,6 +1,6 @@
 # 3D tool feasibility
 
-Research only, 30 Oct 2026. Nothing here is decided or built.
+Research, 30 Oct 2026. Status: built as the Voxels tool (branch `feature/voxels`, Oct 2026).
 
 ## Verdict
 

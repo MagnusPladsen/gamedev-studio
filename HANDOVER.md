@@ -33,6 +33,7 @@ Redirect URLs (already listed in `supabase/config.toml`).
 | Notebook | Folders, pins, checklists, templates, `[[links]]` to notes and story |
 | Dialogue | Branching nodes, preview, JSON + Yarn Spinner export |
 | Palettes | Presets, "Use in Pixel Art", .txt / .gpl export |
+| Voxels | 3D voxel editor (three.js) on branch `feature/voxels`: add/erase/paint/eyedropper/fill/box, X/Y/Z mirror, grid 8-64, sprite to voxels import, .glb / .obj + .mtl / .vox / .png export (1 voxel = 0.1 m, Y-up), Pip's Quest models |
 | Sprite Sheets | Packs all frames, PNG + atlas JSON |
 
 Across the app: projects, dashboard listing every asset with its links, linking between any assets, autosave,
@@ -46,7 +47,10 @@ cloud / local-folder storage, Vercel Analytics.
   repo settings).
 - **Release** `v0.1.0-beta` as a pre-release using the `0.1.0-beta` section of `CHANGELOG.md` (the README badge
   shows a release once it exists).
-- Supabase: confirm all three migrations in `supabase/migrations/` ran (tables `projects`, `assets`; the
+- Voxels: hand-check the `.vox` export in MagicaVoxel (upright, not mirrored, colours right) and try touch editing
+  on a real phone.
+- Supabase: the new migration `20261031090000_add_models_collection.sql` (the 4th) must run so `models` is allowed.
+- Supabase: confirm all three older migrations in `supabase/migrations/` ran (tables `projects`, `assets`; the
   `assets_collection_check` constraint must include `notes`, `boards`, `issues`). For GitHub sign-in, create a
   GitHub OAuth app with callback `https://lznqrdbvamheoisjaoqr.supabase.co/auth/v1/callback` and enable the GitHub
   provider. Cloud sign-in has not been tested end to end yet (the cloud session could not reach supabase.co).
@@ -59,6 +63,9 @@ cloud / local-folder storage, Vercel Analytics.
 - Projects created before the examples system may still contain the old untagged story examples
   ("Hero", "Starting Village", "Magic Sword"); "Remove examples" deliberately doesn't delete those.
 - `npm run lint` still reports a few older `react-hooks` findings (setState in effects, a ref read in render).
+- Voxels: OBJ `Kd` is written in linear colour because Blender reads it as linear, so importers that expect sRGB
+  may show it slightly dark.
+- Voxels: .glb export errors aren't shown to the user yet.
 - No automated tests; see Testing in `CLAUDE.md`.
 
 ## Suggested next steps
