@@ -15,3 +15,29 @@ export async function flushAllAutosaves(): Promise<void> {
   const pendingFlushes = [...handlers].map(async (flush) => flush());
   await Promise.allSettled(pendingFlushes);
 }
+
+export interface SaveTracker {
+  run(save: () => void | Promise<void>): Promise<void>;
+  whenIdle(): Promise<void>;
+}
+
+/** Runs saves one after another and lets callers wait for whatever is still in flight. */
+export function createSaveTracker(): SaveTracker {
+  let inFlight: Promise<void> | null = null;
+
+  return {
+    run(save) {
+      const previous = inFlight ?? Promise.resolve();
+      const current = previous.catch(() => undefined).then(save);
+      inFlight = current;
+      const clear = (): void => {
+        if (inFlight === current) inFlight = null;
+      };
+      current.then(clear, clear);
+      return current;
+    },
+    whenIdle() {
+      return (inFlight ?? Promise.resolve()).catch(() => undefined);
+    },
+  };
+}

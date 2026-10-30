@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { registerAutosaveFlush } from "@/lib/autosave-registry";
+import { createSaveTracker, registerAutosaveFlush } from "@/lib/autosave-registry";
 
 export type SaveState = "saved" | "unsaved" | "saving";
 
@@ -22,18 +22,21 @@ export function useAutosave<T>(
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const baseline = useRef(value);
   const keyRef = useRef(resetKey);
+  const [tracker] = useState(createSaveTracker);
 
   const flushNow = useCallback((): Promise<void> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     const p = pending.current;
-    if (!p) return Promise.resolve();
+    if (!p) return tracker.whenIdle();
     pending.current = null;
     setState("saving");
-    return Promise.resolve(saveRef.current(p.value))
+    const save = saveRef.current;
+    return tracker
+      .run(() => save(p.value))
       .then(() => setState(pending.current ? "unsaved" : "saved"))
       .catch(() => setState("unsaved"));
-  }, []);
+  }, [tracker]);
 
   const flush = useCallback(() => {
     void flushNow();
