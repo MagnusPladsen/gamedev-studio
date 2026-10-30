@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
-import { getRelated, wikiTargets } from "@/lib/links";
+import { dropDeletedLinkTargets, getRelated, wikiTargets } from "@/lib/links";
 import { ASSET_KINDS, assetHref } from "@/lib/assets";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useStorage";
@@ -36,6 +36,7 @@ import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { useToast } from "@/components/Toast";
 
 const ENTRY_TYPES = [
   { value: "character" as const, label: "Character", icon: User, color: "#a78bfa" },
@@ -78,6 +79,12 @@ interface Autocomplete {
   query: string;
   start: number; // index of the "[[" in the content
   index: number;
+}
+
+function skippedLinksMessage(count: number): string {
+  return count === 1
+    ? "Skipped a link to an asset that was deleted."
+    : `Skipped ${count} links to assets that were deleted.`;
 }
 
 export default function StoryPage() {
@@ -126,13 +133,17 @@ export default function StoryPage() {
   });
   useTrackOpenAsset(selectedId ? { type: "story", id: selectedId } : null);
 
+  const { showToast } = useToast();
+
   // Entry-level undo (title, type, tags, links, saved content). Typing in the editor uses the textarea's own undo.
   const history = useHistory(
     stored,
     (v) => {
       if (!v) return;
       setDraft(null);
-      storage.save("stories", { ...v, updatedAt: new Date().toISOString() }, projectId);
+      const { links, dropped } = dropDeletedLinkTargets(projectId, v.links ?? []);
+      storage.save("stories", { ...v, links, updatedAt: new Date().toISOString() }, projectId);
+      if (dropped > 0) showToast({ message: skippedLinksMessage(dropped) });
     },
     stored?.id
   );

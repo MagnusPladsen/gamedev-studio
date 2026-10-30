@@ -1,7 +1,7 @@
 import { v4 as uuid } from "uuid";
-import type { AssetRef, AssetType, StoryEntry } from "@/types";
+import type { AssetLink, AssetRef, AssetType, StoryEntry } from "@/types";
 import { storage } from "./storage";
-import { getAsset, type AssetSummary } from "./assets";
+import { ASSET_KINDS, getAsset, type AssetSummary } from "./assets";
 
 export type LinkSource = "link" | "story" | "wiki";
 
@@ -13,6 +13,12 @@ const WIKI_LINK = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
 
 export function wikiTargets(content: string): string[] {
   return [...content.matchAll(WIKI_LINK)].map((m) => m[1].trim().toLowerCase());
+}
+
+/** Keeps the story links whose target still exists, e.g. after undo brings back a link to a deleted asset. */
+export function dropDeletedLinkTargets(projectId: string, links: AssetLink[]): { links: AssetLink[]; dropped: number } {
+  const kept = links.filter((link) => storage.getById(ASSET_KINDS[link.targetType].collection, link.targetId, projectId));
+  return { links: kept, dropped: links.length - kept.length };
 }
 
 /**
