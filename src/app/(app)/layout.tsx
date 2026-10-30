@@ -13,6 +13,7 @@ import {
   Palette,
   Package,
   NotebookPen,
+  SquareKanban,
   FolderOpen,
   ChevronLeft,
   LayoutDashboard,
@@ -48,6 +49,7 @@ function toolTheme(color?: string, onAccent = "#0b0b10"): React.CSSProperties {
 
 const toolNav = [
   { icon: LayoutDashboard, name: "Assets", path: "assets", color: "var(--text-secondary)" },
+  { icon: SquareKanban, name: "Task Board", path: "board", color: ASSET_KINDS.issue.color },
   { icon: Paintbrush, name: "Pixel Art", path: "pixel-art", color: ASSET_KINDS.sprite.color, onAccent: "#fff" },
   { icon: Music, name: "Music", path: "music", color: ASSET_KINDS.music.color },
   { icon: Volume2, name: "SFX", path: "sfx", color: ASSET_KINDS.sound.color },

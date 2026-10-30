@@ -18,8 +18,11 @@ import {
   Link2,
   Download,
   NotebookPen,
+  SquareKanban,
 } from "lucide-react";
-import { storage } from "@/lib/storage";
+import { storage, PROJECT_COLLECTIONS } from "@/lib/storage";
+import { isExample } from "@/lib/examples";
+import { ExamplesBar } from "@/components/ExamplesBar";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, listAssets } from "@/lib/assets";
 import { getRelated } from "@/lib/links";
 import { useStorageVersion } from "@/hooks/useStorage";
@@ -36,7 +39,10 @@ const ICONS: Record<AssetType, React.ComponentType<{ className?: string }>> = {
   palette: Palette,
   spritesheet: Package,
   note: NotebookPen,
+  issue: SquareKanban,
 };
+
+const ASSET_COLLECTIONS = PROJECT_COLLECTIONS.filter((c) => c !== "links");
 
 const DESCRIPTIONS: Record<AssetType, string> = {
   sprite: "Draw sprites and animations",
@@ -49,6 +55,7 @@ const DESCRIPTIONS: Record<AssetType, string> = {
   palette: "Shared colour palettes",
   spritesheet: "Pack sprites for your engine",
   note: "Ideas, to-dos and dev notes",
+  issue: "Sprints, tasks and bugs",
 };
 
 export default function AssetsPage() {
@@ -73,7 +80,14 @@ export default function AssetsPage() {
     return all
       .filter((a) => (filter === "all" || a.type === filter) && (!q || a.name.toLowerCase().includes(q)))
       .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
-      .map((a) => ({ ...a, related: getRelated(projectId, a.type, a.id) }));
+      .map((a) => {
+        const collection = ASSET_KINDS[a.type].collection;
+        return {
+          ...a,
+          related: getRelated(projectId, a.type, a.id),
+          example: isExample(storage.getById(collection, a.id, projectId), collection),
+        };
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, query, filter, projectId, version]);
 
@@ -95,9 +109,9 @@ export default function AssetsPage() {
   }
 
   return (
-    <div className="p-6 md:p-10 max-w-5xl mx-auto">
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
+    <div className="p-6 max-md:p-4 md:p-10 max-w-5xl mx-auto">
+      <div className="mb-3 flex items-start justify-between gap-4 max-md:flex-col max-md:items-stretch">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
             {project.name}
           </h1>
@@ -109,14 +123,15 @@ export default function AssetsPage() {
         </div>
         <button
           onClick={exportProject}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm shrink-0"
-          style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm shrink-0"
+          style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border-hover)" }}
           title="Download the whole project as one JSON file (import it again from the Projects page)"
         >
           <Download className="w-4 h-4" />
           Export project
         </button>
       </div>
+      <ExamplesBar projectId={projectId} collections={ASSET_COLLECTIONS} className="mb-8" />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-12">
         {ASSET_TYPES.map((t) => {
@@ -138,7 +153,7 @@ export default function AssetsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>
-                    {t === "spritesheet" ? "Sprite Sheets" : t === "note" ? "Notebook" : kind.label === "Story" ? "Story" : `${kind.label}s`.replace("Musics", "Music")}
+                    {t === "spritesheet" ? "Sprite Sheets" : t === "note" ? "Notebook" : t === "issue" ? "Task Board" : kind.label === "Story" ? "Story" : `${kind.label}s`.replace("Musics", "Music")}
                   </span>
                   <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: kind.color }} />
                 </div>
@@ -156,7 +171,7 @@ export default function AssetsPage() {
         })}
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 max-md:[&_input]:w-full max-md:[&>div]:w-full max-md:[&>div>div]:flex-1">
         <h2 className="font-semibold" style={{ color: "var(--text-primary)" }}>
           Everything in this project
         </h2>
@@ -212,8 +227,17 @@ export default function AssetsPage() {
                   <Link href={assetHref(projectId, a.type, a.id)} className="text-sm truncate block hover:underline" style={{ color: "var(--text-primary)" }}>
                     {a.name}
                   </Link>
-                  <span className="text-xs" style={{ color: kind.color }}>
+                  <span className="text-xs flex items-center gap-1.5" style={{ color: kind.color }}>
                     {kind.label}
+                    {a.example && (
+                      <span
+                        className="px-1.5 py-px rounded text-[10px] font-medium"
+                        style={{ background: "var(--bg-hover)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+                        title="Example asset. Edit it or remove all examples above."
+                      >
+                        Example
+                      </span>
+                    )}
                   </span>
                 </div>
                 {a.related.length > 0 && (

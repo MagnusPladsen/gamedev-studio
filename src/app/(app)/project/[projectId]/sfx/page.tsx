@@ -1,16 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
-import { Play, Save, Download, Trash2, Shuffle, Dices, Volume2, Plus, Check } from "lucide-react";
+import { Play, Trash2, Shuffle, Dices, Volume2, Plus, Copy, Wand2 } from "lucide-react";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
-import { useOpenParam } from "@/hooks/useStorage";
+import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { VolumeControl } from "@/components/VolumeControl";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { useHistory } from "@/hooks/useHistory";
 import { previewGain, usePreviewVolume } from "@/hooks/usePreviewVolume";
+import { useAutosave } from "@/hooks/useAutosave";
+import { SaveIndicator } from "@/components/SaveIndicator";
+import { ExportMenu } from "@/components/ExportMenu";
+import { ExamplesBar } from "@/components/ExamplesBar";
 import type { SoundEffect, SfxParams } from "@/types";
 
 const SAMPLE_RATE = 44100;
@@ -139,81 +143,6 @@ const PRESETS: Record<string, () => SfxParams> = {
     volume: 0.4,
   }),
 };
-
-const EXAMPLES: { name: string; params: SfxParams }[] = [
-  {
-    name: "Laser Beam",
-    params: {
-      waveType: "sawtooth",
-      frequency: 1100,
-      frequencySlide: -0.35,
-      repeatSpeed: 0,
-      sustainTime: 0.08,
-      decayTime: 0.18,
-      attackTime: 0,
-      hpFilterCutoff: 0,
-      lpFilterCutoff: 1,
-      lpFilterResonance: 0,
-      volume: 0.5,
-      vibratoDepth: 0,
-      vibratoSpeed: 0,
-    },
-  },
-  {
-    name: "Coin Collect",
-    params: {
-      waveType: "square",
-      frequency: 900,
-      frequencySlide: 0.15,
-      repeatSpeed: 0,
-      sustainTime: 0.05,
-      decayTime: 0.15,
-      attackTime: 0,
-      hpFilterCutoff: 0,
-      lpFilterCutoff: 1,
-      lpFilterResonance: 0,
-      volume: 0.4,
-      vibratoDepth: 0,
-      vibratoSpeed: 0,
-    },
-  },
-  {
-    name: "Boom",
-    params: {
-      waveType: "noise",
-      frequency: 120,
-      frequencySlide: -0.05,
-      repeatSpeed: 0,
-      sustainTime: 0.25,
-      decayTime: 0.6,
-      attackTime: 0,
-      hpFilterCutoff: 0,
-      lpFilterCutoff: 0.4,
-      lpFilterResonance: 0.2,
-      volume: 0.8,
-      vibratoDepth: 0,
-      vibratoSpeed: 0,
-    },
-  },
-  {
-    name: "Jump",
-    params: {
-      waveType: "square",
-      frequency: 300,
-      frequencySlide: 0.25,
-      repeatSpeed: 0,
-      sustainTime: 0.08,
-      decayTime: 0.2,
-      attackTime: 0,
-      hpFilterCutoff: 0,
-      lpFilterCutoff: 1,
-      lpFilterResonance: 0,
-      volume: 0.5,
-      vibratoDepth: 0,
-      vibratoSpeed: 0,
-    },
-  },
-];
 
 function synthesize(params: SfxParams): Float32Array {
   const totalTime = params.attackTime + params.sustainTime + params.decayTime;
@@ -389,7 +318,7 @@ function drawWaveform(canvas: HTMLCanvasElement, buffer: Float32Array) {
 
   if (buffer.length === 0) return;
 
-  ctx.strokeStyle = "#7c5cfc";
+  ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue("--tool-color").trim() || "#fbbf24";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
 
@@ -404,6 +333,9 @@ function drawWaveform(canvas: HTMLCanvasElement, buffer: Float32Array) {
   ctx.stroke();
 }
 
+
+const btnSecondary: React.CSSProperties = { background: "var(--bg-hover)", color: "var(--text-primary)", border: "1px solid var(--border)" };
+
 export default function SfxPage() {
   const volume = usePreviewVolume();
   useEffect(() => {
@@ -412,165 +344,148 @@ export default function SfxPage() {
   const params = useParams();
   const projectId = params.projectId as string;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const storeVersion = useStorageVersion();
   const [sfxParams, setSfxParams] = useState<SfxParams>({ ...DEFAULT_PARAMS });
-  const [savedSounds, setSavedSounds] = useState<SoundEffect[]>([]);
-  const [saveName, setSaveName] = useState("");
-  const [currentBuffer, setCurrentBuffer] = useState<Float32Array>(new Float32Array(0));
+  const [name, setName] = useState("New sound");
+  // null = a draft that isn't in the project yet
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [savedFlash, setSavedFlash] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  // bumps when a different sound is opened, so undo history starts fresh (saving keeps it)
+  // bumps when a different sound is opened, so undo history starts fresh
   const [historyKey, setHistoryKey] = useState(0);
-  const history = useHistory(
-    sfxParams,
-    (p) => {
-      setSfxParams(p);
-      setCurrentBuffer(synthesize(p));
-    },
-    historyKey
-  );
+  const history = useHistory(sfxParams, (p) => setSfxParams(p), historyKey);
 
-  useEffect(() => {
-    setSavedSounds(storage.getAll("sounds", projectId));
-    setLoaded(true);
-  }, [projectId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const savedSounds = useMemo(() => storage.getAll("sounds", projectId), [projectId, storeVersion]);
 
   useOpenParam((id) => {
     const sound = storage.getById("sounds", id, projectId);
     if (sound) loadSaved(sound, false);
-  }, loaded);
+  });
+
+  // the waveform always shows the current settings, not only after pressing Play
+  const waveform = useMemo(() => synthesize(sfxParams), [sfxParams]);
+  useEffect(() => {
+    if (canvasRef.current) drawWaveform(canvasRef.current, waveform);
+  }, [waveform]);
+
+  const draftValue = useMemo(
+    () => (activeId ? { id: activeId, name, params: sfxParams } : null),
+    [activeId, name, sfxParams]
+  );
+  const autosave = useAutosave(
+    draftValue,
+    (v) => {
+      if (!v) return;
+      const existing = storage.getById("sounds", v.id, projectId);
+      if (!existing) return;
+      storage.save(
+        "sounds",
+        { ...existing, name: v.name.trim() || "Untitled sound", params: { ...v.params }, updatedAt: new Date().toISOString() },
+        projectId
+      );
+    },
+    { resetKey: activeId ?? "draft", enabled: !!activeId }
+  );
 
   useEffect(() => {
-    if (canvasRef.current) {
-      drawWaveform(canvasRef.current, currentBuffer);
-    }
-  }, [currentBuffer]);
-
-  const generate = useCallback(() => {
-    const buf = synthesize(sfxParams);
-    setCurrentBuffer(buf);
-    return buf;
-  }, [sfxParams]);
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        autosave.flush();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [autosave]);
 
   function playSound() {
-    const buf = generate();
-    playBuffer(buf);
+    playBuffer(synthesize(sfxParams));
   }
 
   function updateParam<K extends keyof SfxParams>(key: K, value: SfxParams[K]) {
     setSfxParams((p) => ({ ...p, [key]: value }));
   }
 
-  function applyPreset(name: string) {
-    const gen = PRESETS[name];
-    if (gen) {
-      const p = gen();
-      setSfxParams(p);
-      const buf = synthesize(p);
-      setCurrentBuffer(buf);
-      playBuffer(buf);
-    }
-  }
-
-  function loadExample(ex: { name: string; params: SfxParams }) {
-    setSfxParams({ ...ex.params });
-    const buf = synthesize(ex.params);
-    setCurrentBuffer(buf);
-    playBuffer(buf);
-    setSaveName(ex.name);
+  /** Generators always start a fresh draft, so exploring never overwrites a saved sound. */
+  function applyPreset(presetName: string) {
+    const gen = PRESETS[presetName];
+    if (!gen) return;
+    const p = gen();
     setActiveId(null);
-    setHistoryKey((k) => k + 1);
+    setName(presetName);
+    setSfxParams(p);
+    playBuffer(synthesize(p));
   }
 
   function randomize() {
-    const presetNames = Object.keys(PRESETS);
-    applyPreset(pick(presetNames));
+    applyPreset(pick(Object.keys(PRESETS)));
   }
 
   function mutate() {
-    {
-      const p = { ...sfxParams };
-      p.frequency = Math.max(20, p.frequency + rand(-100, 100));
-      p.frequencySlide = Math.max(-1, Math.min(1, p.frequencySlide + rand(-0.1, 0.1)));
-      p.sustainTime = Math.max(0.01, p.sustainTime + rand(-0.05, 0.05));
-      p.decayTime = Math.max(0.01, p.decayTime + rand(-0.1, 0.1));
-      p.lpFilterCutoff = Math.max(0, Math.min(1, p.lpFilterCutoff + rand(-0.1, 0.1)));
-      p.vibratoDepth = Math.max(0, Math.min(1, p.vibratoDepth + rand(-0.02, 0.02)));
-      const buf = synthesize(p);
-      setCurrentBuffer(buf);
-      playBuffer(buf);
-      setSfxParams(p);
-    }
+    const p = { ...sfxParams };
+    p.frequency = Math.max(20, p.frequency + rand(-100, 100));
+    p.frequencySlide = Math.max(-1, Math.min(1, p.frequencySlide + rand(-0.1, 0.1)));
+    p.sustainTime = Math.max(0.01, p.sustainTime + rand(-0.05, 0.05));
+    p.decayTime = Math.max(0.01, p.decayTime + rand(-0.1, 0.1));
+    p.lpFilterCutoff = Math.max(0, Math.min(1, p.lpFilterCutoff + rand(-0.1, 0.1)));
+    p.vibratoDepth = Math.max(0, Math.min(1, p.vibratoDepth + rand(-0.02, 0.02)));
+    setSfxParams(p);
+    playBuffer(synthesize(p));
   }
 
-  function saveSound(asNew = false) {
-    const name = saveName.trim() || "Untitled Sound";
-    const existing = !asNew && activeId ? storage.getById("sounds", activeId, projectId) : undefined;
+  function createSound(soundName: string, p: SfxParams): SoundEffect {
     const now = new Date().toISOString();
-    const sound: SoundEffect = {
-      id: existing?.id ?? uuid(),
-      projectId,
-      name,
-      params: { ...sfxParams },
-      tags: existing?.tags ?? [],
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
+    const sound: SoundEffect = { id: uuid(), projectId, name: soundName, params: { ...p }, tags: [], createdAt: now, updatedAt: now };
     storage.save("sounds", sound, projectId);
-    setSavedSounds(storage.getAll("sounds", projectId));
-    setSaveName(name);
+    return sound;
+  }
+
+  function keepDraft() {
+    const sound = createSound(name.trim() || "Untitled sound", sfxParams);
     setActiveId(sound.id);
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 1500);
+    setName(sound.name);
   }
 
   function newSound() {
-    setActiveId(null);
-    setSaveName("");
-    setSfxParams({ ...DEFAULT_PARAMS });
-    setCurrentBuffer(synthesize(DEFAULT_PARAMS));
-    setHistoryKey((k) => k + 1);
+    autosave.flush();
+    const sound = createSound(`Untitled sound ${savedSounds.length + 1}`, DEFAULT_PARAMS);
+    loadSaved(sound, false);
   }
 
-  function deleteSound(id: string) {
-    storage.delete("sounds", id, projectId);
-    setSavedSounds(storage.getAll("sounds", projectId));
-    if (activeId === id) setActiveId(null);
+  function duplicateSound() {
+    autosave.flush();
+    const sound = createSound(`${name.trim() || "Untitled sound"} copy`, sfxParams);
+    loadSaved(sound, false);
   }
 
-  function playSaved(sound: SoundEffect) {
-    const buf = synthesize(sound.params);
-    playBuffer(buf);
+  function deleteSound(sound: SoundEffect) {
+    if (!confirm(`Delete "${sound.name}"?`)) return;
+    storage.delete("sounds", sound.id, projectId);
+    if (activeId === sound.id) {
+      setActiveId(null);
+      setName("New sound");
+    }
   }
 
   function loadSaved(sound: SoundEffect, play = true) {
-    setSfxParams({ ...sound.params });
-    setSaveName(sound.name);
     setActiveId(sound.id);
-    const buf = synthesize(sound.params);
-    setCurrentBuffer(buf);
-    if (play) playBuffer(buf);
+    setName(sound.name);
+    setSfxParams({ ...sound.params });
+    if (play) playBuffer(synthesize(sound.params));
     setHistoryKey((k) => k + 1);
   }
 
   function exportWav() {
-    const buf = generate();
-    const wav = bufferToWav(buf);
+    const wav = bufferToWav(synthesize(sfxParams));
     const blob = new Blob([wav], { type: "audio/wav" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${saveName.trim() || "sound"}.wav`;
+    a.download = `${name.trim() || "sound"}.wav`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  const sliderStyle: React.CSSProperties = {
-    width: "100%",
-    accentColor: "var(--accent)",
-    cursor: "pointer",
-  };
-
+  const sliderStyle: React.CSSProperties = { width: "100%", accentColor: "var(--accent)", cursor: "pointer" };
   const labelStyle: React.CSSProperties = {
     color: "var(--text-secondary)",
     fontSize: "0.75rem",
@@ -580,27 +495,50 @@ export default function SfxPage() {
     marginBottom: "2px",
   };
 
+  const slider = (key: keyof SfxParams, label: string, min: number, max: number, step: number, fmt: (v: number) => string) => (
+    <div key={key}>
+      <div style={labelStyle}>
+        <span>{label}</span>
+        <span style={{ color: "var(--text-muted)" }}>{fmt(sfxParams[key] as number)}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={sfxParams[key] as number}
+        onChange={(e) => updateParam(key, Number(e.target.value) as never)}
+        style={sliderStyle}
+        aria-label={label}
+      />
+    </div>
+  );
+
   return (
     <div className="p-4 md:p-6 h-full overflow-auto" style={{ background: "var(--bg-primary)" }}>
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         <UndoRedoButtons history={history} />
-        <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
+        <h1 className="text-xl font-bold max-md:hidden" style={{ color: "var(--text-primary)" }}>
           SFX Generator
         </h1>
+        <div className="ml-auto flex items-center gap-3">
+          {activeId ? (
+            <SaveIndicator state={autosave.state} />
+          ) : (
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Draft, not in your project yet
+            </span>
+          )}
+          <ExportMenu items={[{ label: "WAV", description: "16-bit mono, 44.1 kHz", onClick: exportWav }]} />
+        </div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4">
-        {/* Left: Controls */}
-        <div className="flex-1 space-y-4">
-          {/* Waveform Display */}
+        {/* Left: sound + controls */}
+        <div className="flex-1 min-w-0 space-y-4">
           <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-            <canvas
-              ref={canvasRef}
-              width={600}
-              height={120}
-              style={{ width: "100%", height: "120px", borderRadius: "8px" }}
-            />
-            <div className="flex items-center gap-2 mt-3">
+            <canvas ref={canvasRef} width={600} height={120} style={{ width: "100%", height: "120px", borderRadius: "8px" }} />
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
               <button
                 onClick={playSound}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
@@ -609,69 +547,39 @@ export default function SfxPage() {
                 <Play className="w-4 h-4" />
                 Play
               </button>
-              <button
-                onClick={randomize}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm"
-                style={{ background: "var(--bg-hover)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-              >
+              <button onClick={randomize} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm" style={btnSecondary} title="Generate a random sound of any kind">
                 <Shuffle className="w-4 h-4" />
-                Randomize
+                Random
               </button>
-              <button
-                onClick={mutate}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm"
-                style={{ background: "var(--bg-hover)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-              >
+              <button onClick={mutate} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm" style={btnSecondary} title="Nudge the current sound a little">
                 <Dices className="w-4 h-4" />
                 Mutate
               </button>
-              <div className="ml-auto order-last">
+              <div className="ml-auto">
                 <VolumeControl />
               </div>
-              <button
-                onClick={exportWav}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm"
-                style={{ background: "var(--bg-hover)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-              >
-                <Download className="w-4 h-4" />
-                WAV
-              </button>
             </div>
           </div>
 
-          {/* Presets */}
+          {/* Generators */}
           <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-            <div className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
-              PRESETS
+            <div className="flex items-baseline gap-2 flex-wrap mb-2">
+              <span className="flex items-center gap-1 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                <Wand2 className="w-3.5 h-3.5" /> GENERATE
+              </span>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Each click makes a new random variant. Keep the one you like.
+              </span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {Object.keys(PRESETS).map((name) => (
+              {Object.keys(PRESETS).map((presetName) => (
                 <button
-                  key={name}
-                  onClick={() => applyPreset(name)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                  style={{ background: "var(--bg-hover)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  key={presetName}
+                  onClick={() => applyPreset(presetName)}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium"
+                  style={btnSecondary}
                 >
-                  {name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Examples */}
-          <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-            <div className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
-              EXAMPLES — click to load, tweak and make it yours
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {EXAMPLES.map((ex) => (
-                <button
-                  key={ex.name}
-                  onClick={() => loadExample(ex)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                  style={{ background: "var(--accent)", color: "white", opacity: 0.85 }}
-                >
-                  {ex.name}
+                  {presetName}
                 </button>
               ))}
             </div>
@@ -682,8 +590,6 @@ export default function SfxPage() {
             <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
               PARAMETERS
             </div>
-
-            {/* Wave Type */}
             <div>
               <div style={labelStyle}>
                 <span>Wave Type</span>
@@ -694,10 +600,10 @@ export default function SfxPage() {
                   <button
                     key={wt}
                     onClick={() => updateParam("waveType", wt)}
-                    className="flex-1 py-1.5 rounded-md text-xs font-medium transition-colors"
+                    className="flex-1 min-w-0 py-1.5 rounded-md text-xs font-medium truncate"
                     style={{
                       background: sfxParams.waveType === wt ? "var(--accent)" : "var(--bg-hover)",
-                      color: sfxParams.waveType === wt ? "white" : "var(--text-secondary)",
+                      color: sfxParams.waveType === wt ? "white" : "var(--text-primary)",
                       border: `1px solid ${sfxParams.waveType === wt ? "var(--accent)" : "var(--border)"}`,
                     }}
                   >
@@ -706,194 +612,120 @@ export default function SfxPage() {
                 ))}
               </div>
             </div>
-
-            {/* Frequency */}
-            <div>
-              <div style={labelStyle}>
-                <span>Frequency</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.frequency.toFixed(0)} Hz</span>
-              </div>
-              <input type="range" min="20" max="2400" step="1" value={sfxParams.frequency} onChange={(e) => updateParam("frequency", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            <div>
-              <div style={labelStyle}>
-                <span>Frequency Slide</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.frequencySlide.toFixed(2)}</span>
-              </div>
-              <input type="range" min="-1" max="1" step="0.01" value={sfxParams.frequencySlide} onChange={(e) => updateParam("frequencySlide", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            {/* Envelope */}
-            <div>
-              <div style={labelStyle}>
-                <span>Attack Time</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.attackTime.toFixed(3)}s</span>
-              </div>
-              <input type="range" min="0" max="1" step="0.001" value={sfxParams.attackTime} onChange={(e) => updateParam("attackTime", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            <div>
-              <div style={labelStyle}>
-                <span>Sustain Time</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.sustainTime.toFixed(3)}s</span>
-              </div>
-              <input type="range" min="0.01" max="1" step="0.001" value={sfxParams.sustainTime} onChange={(e) => updateParam("sustainTime", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            <div>
-              <div style={labelStyle}>
-                <span>Decay Time</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.decayTime.toFixed(3)}s</span>
-              </div>
-              <input type="range" min="0.01" max="2" step="0.001" value={sfxParams.decayTime} onChange={(e) => updateParam("decayTime", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            {/* Vibrato */}
-            <div>
-              <div style={labelStyle}>
-                <span>Vibrato Depth</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.vibratoDepth.toFixed(3)}</span>
-              </div>
-              <input type="range" min="0" max="1" step="0.001" value={sfxParams.vibratoDepth} onChange={(e) => updateParam("vibratoDepth", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            <div>
-              <div style={labelStyle}>
-                <span>Vibrato Speed</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.vibratoSpeed.toFixed(1)}</span>
-              </div>
-              <input type="range" min="0" max="50" step="0.1" value={sfxParams.vibratoSpeed} onChange={(e) => updateParam("vibratoSpeed", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            {/* Filters */}
-            <div>
-              <div style={labelStyle}>
-                <span>LP Filter Cutoff</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.lpFilterCutoff.toFixed(2)}</span>
-              </div>
-              <input type="range" min="0" max="1" step="0.01" value={sfxParams.lpFilterCutoff} onChange={(e) => updateParam("lpFilterCutoff", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            <div>
-              <div style={labelStyle}>
-                <span>LP Filter Resonance</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.lpFilterResonance.toFixed(2)}</span>
-              </div>
-              <input type="range" min="0" max="1" step="0.01" value={sfxParams.lpFilterResonance} onChange={(e) => updateParam("lpFilterResonance", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            <div>
-              <div style={labelStyle}>
-                <span>HP Filter Cutoff</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.hpFilterCutoff.toFixed(2)}</span>
-              </div>
-              <input type="range" min="0" max="1" step="0.01" value={sfxParams.hpFilterCutoff} onChange={(e) => updateParam("hpFilterCutoff", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            {/* Volume & Repeat */}
-            <div>
-              <div style={labelStyle}>
-                <span>Volume</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.volume.toFixed(2)}</span>
-              </div>
-              <input type="range" min="0" max="1" step="0.01" value={sfxParams.volume} onChange={(e) => updateParam("volume", Number(e.target.value))} style={sliderStyle} />
-            </div>
-
-            <div>
-              <div style={labelStyle}>
-                <span>Repeat Speed</span>
-                <span style={{ color: "var(--text-muted)" }}>{sfxParams.repeatSpeed.toFixed(2)}</span>
-              </div>
-              <input type="range" min="0" max="1" step="0.01" value={sfxParams.repeatSpeed} onChange={(e) => updateParam("repeatSpeed", Number(e.target.value))} style={sliderStyle} />
-            </div>
+            {slider("frequency", "Frequency", 20, 2400, 1, (v) => `${v.toFixed(0)} Hz`)}
+            {slider("frequencySlide", "Frequency Slide", -1, 1, 0.01, (v) => v.toFixed(2))}
+            {slider("attackTime", "Attack Time", 0, 1, 0.001, (v) => `${v.toFixed(3)}s`)}
+            {slider("sustainTime", "Sustain Time", 0.01, 1, 0.001, (v) => `${v.toFixed(3)}s`)}
+            {slider("decayTime", "Decay Time", 0.01, 2, 0.001, (v) => `${v.toFixed(3)}s`)}
+            {slider("vibratoDepth", "Vibrato Depth", 0, 1, 0.001, (v) => v.toFixed(3))}
+            {slider("vibratoSpeed", "Vibrato Speed", 0, 50, 0.1, (v) => v.toFixed(1))}
+            {slider("lpFilterCutoff", "LP Filter Cutoff", 0, 1, 0.01, (v) => v.toFixed(2))}
+            {slider("lpFilterResonance", "LP Filter Resonance", 0, 1, 0.01, (v) => v.toFixed(2))}
+            {slider("hpFilterCutoff", "HP Filter Cutoff", 0, 1, 0.01, (v) => v.toFixed(2))}
+            {slider("volume", "Volume", 0, 1, 0.01, (v) => v.toFixed(2))}
+            {slider("repeatSpeed", "Repeat Speed", 0, 1, 0.01, (v) => v.toFixed(2))}
           </div>
         </div>
 
-        {/* Right: Save & Saved Sounds */}
+        {/* Right: this sound + your sounds */}
         <div className="w-full lg:w-72 space-y-4">
-          {/* Save */}
           <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
             <div className="flex items-center justify-between text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
-              <span>{activeId ? "EDITING SAVED SOUND" : "SAVE TO PROJECT"}</span>
-              <button onClick={newSound} className="flex items-center gap-0.5" style={{ color: "var(--accent)" }} title="Start a new sound">
+              <span>{activeId ? "THIS SOUND" : "DRAFT"}</span>
+              <button
+                onClick={newSound}
+                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded"
+                style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                title="Start a new sound in your project"
+              >
                 <Plus className="w-3 h-3" />
-                New
+                New sound
               </button>
             </div>
+            <label htmlFor="sfx-name" className="sr-only">
+              Sound name
+            </label>
             <input
+              id="sfx-name"
               type="text"
               placeholder="Sound name"
-              value={saveName}
-              onChange={(e) => setSaveName(e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-1.5 rounded-lg text-sm mb-2 outline-none"
               style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-              onKeyDown={(e) => e.key === "Enter" && saveSound()}
+              onKeyDown={(e) => e.key === "Enter" && !activeId && keepDraft()}
             />
-            <button
-              onClick={() => saveSound()}
-              className="flex items-center gap-1.5 w-full justify-center px-3 py-1.5 rounded-lg text-sm font-medium"
-              style={{ background: savedFlash ? "var(--green)" : "var(--accent)", color: "white" }}
-            >
-              {savedFlash ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-              {savedFlash ? "Saved" : activeId ? "Save Changes" : "Save Sound"}
-            </button>
-            {activeId && (
-              <button
-                onClick={() => saveSound(true)}
-                className="w-full mt-1.5 px-3 py-1 rounded-lg text-xs"
-                style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
-              >
-                Save as new sound
+            {activeId ? (
+              <button onClick={duplicateSound} className="flex items-center gap-1.5 w-full justify-center px-3 py-1.5 rounded-lg text-xs" style={btnSecondary}>
+                <Copy className="w-3.5 h-3.5" />
+                Duplicate as a new sound
               </button>
+            ) : (
+              <>
+                <button
+                  onClick={keepDraft}
+                  className="flex items-center gap-1.5 w-full justify-center px-3 py-1.5 rounded-lg text-sm font-medium"
+                  style={{ background: "var(--accent)", color: "white" }}
+                >
+                  <Plus className="w-4 h-4" />
+                  Keep this sound
+                </button>
+                <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+                  Adds it to your project. After that every change saves by itself.
+                </p>
+              </>
             )}
             <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
               <LinkedAssets projectId={projectId} type="sound" id={activeId} layout="panel" />
             </div>
           </div>
 
-          {/* Saved List */}
           <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
             <div className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
-              SAVED SOUNDS ({savedSounds.length})
+              YOUR SOUNDS ({savedSounds.length})
             </div>
+            <ExamplesBar projectId={projectId} collections={["sounds"]} className="mb-2" />
             {savedSounds.length === 0 ? (
               <p className="text-xs py-4 text-center" style={{ color: "var(--text-muted)" }}>
-                No sounds saved yet
+                Generate a sound and press Keep, or add the examples.
               </p>
             ) : (
               <div className="space-y-1 max-h-96 overflow-y-auto">
                 {savedSounds.map((sound) => (
                   <div
                     key={sound.id}
-                    className="group flex items-center justify-between p-2 rounded-lg transition-colors cursor-pointer"
+                    className="group flex items-center justify-between p-2 rounded-lg cursor-pointer"
                     style={{ background: activeId === sound.id ? "var(--bg-hover)" : "transparent" }}
                     onClick={() => loadSaved(sound)}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <Volume2 className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--yellow)" }} />
+                      <Volume2 className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--tool-color, var(--yellow))" }} />
                       <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>
                         {sound.name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          playSaved(sound);
+                          playBuffer(synthesize(sound.params));
                         }}
                         className="p-1 rounded"
                         style={{ color: "var(--green)" }}
+                        title={`Play ${sound.name}`}
+                        aria-label={`Play ${sound.name}`}
                       >
                         <Play className="w-3 h-3" />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          deleteSound(sound.id);
+                          deleteSound(sound);
                         }}
                         className="p-1 rounded"
                         style={{ color: "var(--red)" }}
+                        title={`Delete ${sound.name}`}
+                        aria-label={`Delete ${sound.name}`}
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -902,19 +734,6 @@ export default function SfxPage() {
                 ))}
               </div>
             )}
-          </div>
-
-          {/* Free notice */}
-          <div className="rounded-xl border p-3" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
-            <div className="flex items-center gap-2 mb-1">
-              <Download className="w-4 h-4" style={{ color: "var(--green)" }} />
-              <span className="text-xs font-medium" style={{ color: "var(--green)" }}>
-                Free Downloads
-              </span>
-            </div>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              All sounds are yours. Export as WAV with no watermarks, no sign-up, no limits.
-            </p>
           </div>
         </div>
       </div>

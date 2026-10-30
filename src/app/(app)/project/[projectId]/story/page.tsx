@@ -20,8 +20,8 @@ import {
   ChevronDown,
   ChevronRight,
   Tag,
-  Save,
   BookOpen,
+  ArrowLeft,
   CornerDownLeft,
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
@@ -31,6 +31,9 @@ import { ASSET_KINDS, assetHref } from "@/lib/assets";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
 import type { StoryEntry } from "@/types";
+import { useAutosave } from "@/hooks/useAutosave";
+import { SaveIndicator } from "@/components/SaveIndicator";
+import { ExamplesBar } from "@/components/ExamplesBar";
 
 const ENTRY_TYPES = [
   { value: "character" as const, label: "Character", icon: User, color: "#a78bfa" },
@@ -39,7 +42,7 @@ const ENTRY_TYPES = [
   { value: "event" as const, label: "Event", icon: Zap, color: "#f87171" },
   { value: "lore" as const, label: "Lore", icon: Scroll, color: "#fb923c" },
   { value: "quest" as const, label: "Quest", icon: Flag, color: "#34d399" },
-  { value: "note" as const, label: "Note", icon: FileText, color: "#8888a0" },
+  { value: "note" as const, label: "Other", icon: FileText, color: "#8888a0" },
 ] as const;
 
 type EntryType = (typeof ENTRY_TYPES)[number]["value"];
@@ -61,52 +64,6 @@ function getTypeMeta(type: string) {
 function parseWiki(raw: string) {
   const [target, alias] = raw.split("|");
   return { target: target.trim(), label: (alias ?? target).trim() };
-}
-
-function seededKey(projectId: string) {
-  return `gds-seeded-stories:${projectId}`;
-}
-
-function makeExamples(projectId: string): StoryEntry[] {
-  const now = new Date().toISOString();
-  return [
-    {
-      id: uuid(),
-      projectId,
-      title: "Hero",
-      content:
-        "The protagonist of the story. A young adventurer from [[Starting Village]] who discovers the legendary [[Magic Sword]].\n\n## Backstory\nRaised by the village elder after being orphaned. Has a natural talent for combat.\n\n## Personality\n- Brave but impulsive\n- Loyal to friends\n- Driven by justice",
-      type: "character",
-      links: [],
-      tags: ["protagonist", "main-cast"],
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: uuid(),
-      projectId,
-      title: "Starting Village",
-      content:
-        "A peaceful hamlet at the edge of the kingdom. Home to [[Hero]] and roughly 200 villagers.\n\n## Description\nNestled between rolling green hills and a sparkling river. Thatched-roof cottages line cobblestone streets.\n\n## Key Locations\n- Elder's Hut\n- Blacksmith (where [[Magic Sword]] was forged)\n- Market Square\n- Training Grounds",
-      type: "location",
-      links: [],
-      tags: ["starting-area", "safe-zone"],
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: uuid(),
-      projectId,
-      title: "Magic Sword",
-      content:
-        "A legendary blade forged in [[Starting Village]] and destined to be wielded by [[Hero]].\n\n## Properties\n- Glows blue in the presence of enemies\n- +50 Attack Power\n- Can break magical barriers\n\n## Lore\nForged centuries ago by a master blacksmith using ore from a fallen star.",
-      type: "item",
-      links: [],
-      tags: ["weapon", "legendary", "key-item"],
-      createdAt: now,
-      updatedAt: now,
-    },
-  ];
 }
 
 interface HoverCard {
@@ -139,21 +96,9 @@ export default function StoryPage() {
   const [hover, setHover] = useState<HoverCard | null>(null);
   const [ac, setAc] = useState<Autocomplete | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (storage.getAll("stories", projectId).length === 0) {
-      let alreadySeeded = false;
-      try {
-        alreadySeeded = localStorage.getItem(seededKey(projectId)) === "1";
-      } catch {}
-      if (!alreadySeeded) {
-        for (const ex of makeExamples(projectId)) storage.save("stories", ex, projectId);
-      }
-    }
-    try {
-      localStorage.setItem(seededKey(projectId), "1");
-    } catch {}
-  }, [projectId]);
+  // phones show one pane at a time: the entry list, or the open entry (edit or preview)
+  const [mobileView, setMobileView] = useState<"list" | "entry">("list");
+  const [mobilePane, setMobilePane] = useState<"edit" | "preview">("preview");
 
   const entries = useMemo(
     () => storage.getAll("stories", projectId),
@@ -213,12 +158,32 @@ export default function StoryPage() {
     if (dirty && selected) saveEntry({ content: selected.content });
   }
 
+  // Typing saves itself shortly after you stop; switching entry or leaving saves straight away.
+  const autosave = useAutosave(draft, (d) => {
+    if (!d) return;
+    const entry = storage.getById("stories", d.id, projectId);
+    if (entry && entry.content !== d.content) storage.save("stories", { ...entry, content: d.content, updatedAt: new Date().toISOString() }, projectId);
+  });
+
+  const flushAutosave = autosave.flush;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        flushAutosave();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flushAutosave]);
+
   function selectEntry(id: string) {
     flushDraft();
     setDraft(null);
     setAc(null);
     setHover(null);
     setSelectedId(id);
+    setMobileView("entry");
   }
 
   function createEntry(title = newTitle, type: EntryType = newType) {
@@ -239,6 +204,8 @@ export default function StoryPage() {
     storage.save("stories", entry, projectId);
     setDraft(null);
     setSelectedId(entry.id);
+    setMobileView("entry");
+    setMobilePane("edit");
     setShowNewForm(false);
     setNewTitle("");
   }
@@ -466,7 +433,7 @@ export default function StoryPage() {
           <h2 className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
             Connection Graph
           </h2>
-          <button onClick={() => setShowGraph(false)} className="p-1.5 rounded-lg" style={{ color: "var(--text-secondary)" }}>
+          <button onClick={() => setShowGraph(false)} className="p-1.5 rounded-lg" style={{ color: "var(--text-secondary)" }} title="Close graph" aria-label="Close graph">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -519,7 +486,10 @@ export default function StoryPage() {
   return (
     <div className="flex h-full" style={{ background: "var(--bg-primary)" }}>
       {/* Sidebar */}
-      <div className="w-64 shrink-0 border-r flex flex-col" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
+      <div
+        className={`w-64 max-md:w-full shrink-0 border-r max-md:border-r-0 flex flex-col ${mobileView === "entry" ? "max-md:hidden" : ""}`}
+        style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
+      >
         <div className="p-3 border-b space-y-2" style={{ borderColor: "var(--border)" }}>
           <div className="flex items-center gap-2">
             <div className="flex-1 relative">
@@ -541,6 +511,7 @@ export default function StoryPage() {
               className="p-1.5 rounded-md"
               style={{ color: "var(--text-secondary)", background: "var(--bg-primary)", border: "1px solid var(--border)" }}
               title="View graph"
+              aria-label="View connection graph"
             >
               <Network className="w-3.5 h-3.5" />
             </button>
@@ -551,7 +522,7 @@ export default function StoryPage() {
             style={{ background: "var(--accent)", color: "white" }}
           >
             <Plus className="w-3.5 h-3.5" />
-            New Entry
+            New entry
           </button>
         </div>
 
@@ -583,7 +554,7 @@ export default function StoryPage() {
               <button onClick={() => createEntry()} className="flex-1 py-1 rounded-md text-xs font-medium" style={{ background: "var(--accent)", color: "white" }}>
                 Create
               </button>
-              <button onClick={() => setShowNewForm(false)} className="px-3 py-1 rounded-md text-xs" style={{ color: "var(--text-secondary)" }}>
+              <button onClick={() => setShowNewForm(false)} className="px-3 py-1 rounded-md text-xs" style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }}>
                 Cancel
               </button>
             </div>
@@ -620,14 +591,29 @@ export default function StoryPage() {
             );
           })}
         </div>
+        <div className="px-3 py-2.5 border-t" style={{ borderColor: "var(--border)" }}>
+          <ExamplesBar projectId={projectId} collections={["stories"]} />
+        </div>
       </div>
 
       {/* Editor */}
       {selected ? (
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className={`flex-1 flex flex-col min-w-0 ${mobileView === "list" ? "max-md:hidden" : ""}`}>
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: "var(--border)" }}>
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-2 px-5 max-md:px-3 py-3 border-b max-md:flex-wrap" style={{ borderColor: "var(--border)" }}>
+            <div className="flex items-center gap-2 min-w-0 max-md:flex-1">
+              <button
+                onClick={() => {
+                  flushDraft();
+                  setMobileView("list");
+                }}
+                className="md:hidden p-1.5 rounded-md shrink-0"
+                style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                title="Back to all entries"
+                aria-label="Back to all entries"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
               <UndoRedoButtons history={history} />
               {(() => {
                 const meta = getTypeMeta(selected.type);
@@ -641,13 +627,16 @@ export default function StoryPage() {
                 type="text"
                 value={selected.title}
                 onChange={(e) => saveEntry({ title: e.target.value })}
-                className="text-lg font-semibold bg-transparent outline-none min-w-0"
+                className="text-lg font-semibold bg-transparent outline-none min-w-0 max-md:flex-1"
+                aria-label="Entry title"
                 style={{ color: "var(--text-primary)" }}
               />
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              <SaveIndicator state={autosave.state} className="mr-1" />
               <select
                 value={selected.type}
+                aria-label="Entry type"
                 onChange={(e) => saveEntry({ type: e.target.value as EntryType })}
                 className="px-2 py-1 rounded-md text-xs outline-none"
                 style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
@@ -658,19 +647,19 @@ export default function StoryPage() {
                   </option>
                 ))}
               </select>
-              <button onClick={() => deleteEntry(selected.id)} className="p-1.5 rounded-md" style={{ color: "var(--red)", border: "1px solid var(--border)" }} title="Delete entry">
+              <button onClick={() => deleteEntry(selected.id)} className="p-1.5 rounded-md" style={{ color: "var(--red)", border: "1px solid var(--border)" }} title="Delete entry" aria-label="Delete entry">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
           {/* Tags */}
-          <div className="flex items-center gap-1.5 px-5 py-2 border-b flex-wrap" style={{ borderColor: "var(--border)" }}>
+          <div className="flex items-center gap-1.5 px-5 max-md:px-3 py-2 border-b flex-wrap" style={{ borderColor: "var(--border)" }}>
             <Tag className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
             {selected.tags.map((tag) => (
               <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]" style={{ background: "var(--bg-hover)", color: "var(--text-secondary)" }}>
                 {tag}
-                <button onClick={() => removeTag(tag)} className="hover:opacity-70">
+                <button onClick={() => removeTag(tag)} className="hover:opacity-70" title={`Remove tag ${tag}`} aria-label={`Remove tag ${tag}`}>
                   <X className="w-2.5 h-2.5" />
                 </button>
               </span>
@@ -686,16 +675,36 @@ export default function StoryPage() {
             />
           </div>
 
+          {/* Phones: switch between writing and reading */}
+          <div className="md:hidden flex border-b" style={{ borderColor: "var(--border)" }} role="tablist">
+            {(["edit", "preview"] as const).map((pane) => (
+              <button
+                key={pane}
+                role="tab"
+                aria-selected={mobilePane === pane}
+                onClick={() => {
+                  if (pane === "preview") flushDraft();
+                  setMobilePane(pane);
+                }}
+                className="flex-1 py-2 text-xs font-medium"
+                style={{
+                  color: mobilePane === pane ? "var(--text-primary)" : "var(--text-muted)",
+                  borderBottom: `2px solid ${mobilePane === pane ? "var(--tool-color, var(--accent))" : "transparent"}`,
+                }}
+              >
+                {pane === "edit" ? "Write" : "Read"}
+              </button>
+            ))}
+          </div>
+
           {/* Content area - side by side edit / preview */}
           <div className="flex-1 flex min-h-0">
-            <div className="flex-1 flex flex-col border-r relative min-w-0" style={{ borderColor: "var(--border)" }}>
-              <div className="px-5 py-1.5 text-[10px] font-medium flex items-center justify-between" style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
+            <div
+              className={`flex-1 flex flex-col border-r max-md:border-r-0 relative min-w-0 ${mobilePane === "preview" ? "max-md:hidden" : ""}`}
+              style={{ borderColor: "var(--border)" }}
+            >
+              <div className="px-5 py-1.5 text-[10px] font-medium flex items-center justify-between max-md:hidden" style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
                 <span>EDIT (Markdown — type [[ to link an entry)</span>
-                {dirty && (
-                  <button onClick={flushDraft} className="flex items-center gap-1 text-[10px]" style={{ color: "var(--accent)" }}>
-                    <Save className="w-3 h-3" /> Save
-                  </button>
-                )}
               </div>
               <textarea
                 ref={textareaRef}
@@ -710,7 +719,7 @@ export default function StoryPage() {
                   setTimeout(() => setAc(null), 150);
                   flushDraft();
                 }}
-                className="flex-1 resize-none p-5 text-sm leading-relaxed outline-none font-mono"
+                className="flex-1 resize-none p-5 max-md:p-4 text-sm leading-relaxed outline-none font-mono"
                 style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}
                 placeholder="Write your entry content here. Type [[ to link to other entries…"
               />
@@ -754,8 +763,8 @@ export default function StoryPage() {
                 </div>
               )}
             </div>
-            <div className="flex-1 flex flex-col min-w-0">
-              <div className="px-5 py-1.5 text-[10px] font-medium" style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
+            <div className={`flex-1 flex flex-col min-w-0 ${mobilePane === "edit" ? "max-md:hidden" : ""}`}>
+              <div className="px-5 py-1.5 text-[10px] font-medium max-md:hidden" style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
                 PREVIEW
               </div>
               <div className="flex-1 overflow-y-auto">
@@ -798,7 +807,7 @@ export default function StoryPage() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
+        <div className="flex-1 flex items-center justify-center max-md:hidden" style={{ color: "var(--text-muted)" }}>
           <div className="text-center">
             <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-sm">Select an entry or create a new one</p>

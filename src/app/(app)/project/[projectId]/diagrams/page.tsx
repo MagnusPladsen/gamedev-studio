@@ -3,12 +3,14 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useHistory } from "@/hooks/useHistory";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
+import { useAutosave } from "@/hooks/useAutosave";
+import { SaveIndicator } from "@/components/SaveIndicator";
+import { ExportMenu } from "@/components/ExportMenu";
+import { ExamplesBar } from "@/components/ExamplesBar";
 import { useParams } from "next/navigation";
 import {
   Plus,
   Trash2,
-  Save,
-  Download,
   MousePointer,
   Link2,
   ZoomIn,
@@ -20,10 +22,8 @@ import {
   Hexagon,
   StickyNote,
   ChevronDown,
-  FileText,
   ArrowRight,
   GitBranch,
-  Check,
   ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
@@ -67,33 +67,21 @@ const NODE_ICONS: Record<DiagramNode["type"], typeof Square> = {
   custom: Square,
 };
 
-function makeExampleDiagram(projectId: string): Diagram {
-  const idIdle = uuid();
-  const idWalk = uuid();
-  const idJump = uuid();
-  const idLand = uuid();
-  return {
-    id: uuid(),
-    projectId,
-    name: "Player State Machine (Example)",
-    nodes: [
-      { id: idIdle, type: "state", x: 120, y: 200, width: 140, height: 56, label: "Idle" },
-      { id: idWalk, type: "action", x: 360, y: 100, width: 140, height: 56, label: "Walking" },
-      { id: idJump, type: "event", x: 360, y: 300, width: 140, height: 56, label: "Jumping" },
-      { id: idLand, type: "condition", x: 600, y: 200, width: 140, height: 56, label: "On Ground?" },
-    ],
-    edges: [
-      { id: uuid(), from: idIdle, to: idWalk, label: "Move key", type: "arrow" },
-      { id: uuid(), from: idIdle, to: idJump, label: "Space", type: "arrow" },
-      { id: uuid(), from: idWalk, to: idIdle, label: "Stop", type: "dashed" },
-      { id: uuid(), from: idJump, to: idLand, label: "", type: "arrow" },
-      { id: uuid(), from: idLand, to: idIdle, label: "Yes", type: "arrow" },
-      { id: uuid(), from: idLand, to: idJump, label: "No", type: "dashed" },
-    ],
-    tags: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+const LABEL_OFFSET = 14;
+
+/** Where an edge's label pill sits: beside the middle of the line, on the left of its direction. */
+function edgeLabelPos(fx: number, fy: number, tx: number, ty: number) {
+  const dx = tx - fx;
+  const dy = ty - fy;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: (fx + tx) / 2 + (dy / len) * LABEL_OFFSET, y: (fy + ty) / 2 - (dx / len) * LABEL_OFFSET };
+}
+
+function downloadFile(name: string, href: string) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  a.click();
 }
 
 type Mode = "select" | "connect";
@@ -122,7 +110,7 @@ export default function DiagramsPage() {
   const [editText, setEditText] = useState("");
   const [showNodeMenu, setShowNodeMenu] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [savedFlash, setSavedFlash] = useState(false);
+  const lastTap = useRef(0);
 
   // Undo history tracks content only (not updatedAt), and a node drag counts once, on release.
   const content = useMemo(
@@ -141,6 +129,30 @@ export default function DiagramsPage() {
     },
     current?.id
   );
+
+  // Every edit is saved a moment later; a node drag saves once, on release.
+  const autosave = useAutosave(
+    current,
+    (d) => {
+      // skip diagrams deleted meanwhile, so a late save can't bring them back
+      if (!d || !storage.getById("diagrams", d.id, projectId)) return;
+      storage.save("diagrams", d, projectId);
+      setDiagrams(storage.getAll("diagrams", projectId));
+    },
+    { resetKey: current?.id, enabled: !dragging }
+  );
+
+  const flushSave = autosave.flush;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        flushSave();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flushSave]);
 
   const stateRef = useRef({ pan, zoom, current, dragging, panning, mode, connectFrom, selectedNodeId, selectedEdgeId });
   stateRef.current = { pan, zoom, current, dragging, panning, mode, connectFrom, selectedNodeId, selectedEdgeId };
@@ -254,18 +266,22 @@ export default function DiagramsPage() {
         ctx.fill();
       }
 
-      // Edge label
+      // Edge label: a small pill beside the line so it never covers the arrow
       if (edge.label) {
-        const mx = (fx + tx) / 2;
-        const my = (fy + ty) / 2;
+        const { x: lx, y: ly } = edgeLabelPos(fx, fy, tx, ty);
         ctx.font = "11px system-ui, sans-serif";
-        const m = ctx.measureText(edge.label);
-        ctx.fillStyle = "#12121a";
-        ctx.fillRect(mx - m.width / 2 - 4, my - 8, m.width + 8, 16);
-        ctx.fillStyle = "#aaaacc";
+        const w = ctx.measureText(edge.label).width + 12;
+        ctx.fillStyle = "#14141d";
+        ctx.strokeStyle = isSel ? "#ffffff" : "#2e2e40";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(lx - w / 2, ly - 9, w, 18, 9);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#c4c4dc";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(edge.label, mx, my);
+        ctx.fillText(edge.label, lx, ly + 0.5);
       }
     }
 
@@ -455,6 +471,11 @@ export default function DiagramsPage() {
       const ty = toNode.y + toNode.height / 2;
       const dist = pointToSegDist(cx, cy, fx, fy, tx, ty);
       if (dist < 8) return edge;
+      if (edge.label) {
+        const l = edgeLabelPos(fx, fy, tx, ty);
+        const halfW = edge.label.length * 3.2 + 6;
+        if (Math.abs(cx - l.x) <= halfW && Math.abs(cy - l.y) <= 9) return edge;
+      }
     }
     return null;
   }
@@ -639,16 +660,6 @@ export default function DiagramsPage() {
     setShowNodeMenu(false);
   }
 
-  function saveDiagram() {
-    if (!current) return;
-    const saved = { ...current, updatedAt: new Date().toISOString() };
-    storage.save("diagrams", saved, projectId);
-    setCurrent(saved);
-    setDiagrams(storage.getAll("diagrams", projectId));
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 1500);
-  }
-
   function setNodeAsset(nodeId: string, value: string) {
     updateCurrent((d) => ({
       ...d,
@@ -686,19 +697,14 @@ export default function DiagramsPage() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    storage.save("diagrams", d, projectId);
+    setDiagrams(storage.getAll("diagrams", projectId));
     setCurrent(d);
     setShowList(false);
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     setPan({ x: 0, y: 0 });
     setZoom(1);
-  }
-
-  function createExample() {
-    const ex = makeExampleDiagram(projectId);
-    storage.save("diagrams", ex, projectId);
-    setDiagrams(storage.getAll("diagrams", projectId));
-    loadDiagram(ex);
   }
 
   function deleteDiagram(id: string) {
@@ -727,39 +733,49 @@ export default function DiagramsPage() {
   function exportPng() {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const link = document.createElement("a");
-    link.download = `${current?.name || "diagram"}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    downloadFile(`${current?.name || "diagram"}.png`, canvas.toDataURL("image/png"));
+  }
+
+  function exportJson() {
+    if (!current) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(current, null, 2)], { type: "application/json" }));
+    downloadFile(`${current.name || "diagram"}.diagram.json`, url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // Touch has no double-click, so two quick taps open the label editor.
+  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    if (e.pointerType === "touch") {
+      const now = Date.now();
+      if (now - lastTap.current < 320) {
+        lastTap.current = 0;
+        handleDoubleClick(e);
+        return;
+      }
+      lastTap.current = now;
+    }
+    handleMouseDown(e);
   }
 
   // --- List view ---
   if (showList) {
     return (
       <div className="p-6 md:p-10 max-w-3xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between gap-3 mb-3">
           <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
             Diagrams
           </h1>
-          <div className="flex gap-2">
-            <button
-              onClick={createExample}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm"
-              style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
-            >
-              <FileText className="w-4 h-4" />
-              Load Example
-            </button>
-            <button
-              onClick={newDiagram}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
-              style={{ background: "var(--accent)", color: "white" }}
-            >
-              <Plus className="w-4 h-4" />
-              New Diagram
-            </button>
-          </div>
+          <button
+            onClick={newDiagram}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium shrink-0"
+            style={{ background: "var(--accent)", color: "white" }}
+          >
+            <Plus className="w-4 h-4" />
+            New Diagram
+          </button>
         </div>
+        <ExamplesBar projectId={projectId} collections={["diagrams"]} className="mb-6" />
         {diagrams.length === 0 ? (
           <div className="text-center py-20 rounded-xl border border-dashed" style={{ borderColor: "var(--border)" }}>
             <GitBranch className="w-12 h-12 mx-auto mb-4" style={{ color: "var(--text-muted)" }} />
@@ -770,13 +786,6 @@ export default function DiagramsPage() {
               Plan your game logic with flow charts and state machines
             </p>
             <div className="flex justify-center gap-2">
-              <button
-                onClick={createExample}
-                className="px-4 py-2 rounded-lg text-sm"
-                style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
-              >
-                Load Example
-              </button>
               <button
                 onClick={newDiagram}
                 className="px-4 py-2 rounded-lg text-sm font-medium"
@@ -804,9 +813,11 @@ export default function DiagramsPage() {
                   </div>
                 </div>
                 <button
-                  onClick={(e) => { e.stopPropagation(); deleteDiagram(d.id); }}
-                  className="p-2 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${d.name}"?`)) deleteDiagram(d.id); }}
+                  className="p-2 rounded md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                   style={{ color: "var(--red)" }}
+                  title="Delete diagram"
+                  aria-label={`Delete ${d.name}`}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -827,23 +838,25 @@ export default function DiagramsPage() {
     <div className="flex flex-col h-full" onKeyDown={handleKeyDown} tabIndex={0}>
       {/* Top toolbar */}
       <div
-        className="flex items-center justify-between px-3 h-12 border-b shrink-0"
+        className="flex items-center justify-between px-3 h-12 border-b shrink-0 max-md:h-auto max-md:flex-wrap max-md:gap-y-1.5 max-md:py-1.5"
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 min-w-0">
           <button
-            onClick={() => setShowList(true)}
-            className="px-2 py-1 rounded text-xs"
-            style={{ color: "var(--text-secondary)" }}
+            onClick={() => { autosave.flush(); setShowList(true); }}
+            className="px-2 py-1 rounded text-xs whitespace-nowrap"
+            style={{ color: "var(--text-primary)" }}
           >
-            ← Back
+            ← All diagrams
           </button>
           <UndoRedoButtons history={history} />
           <input
-            className="bg-transparent text-sm font-medium outline-none px-2 py-1 rounded"
-            style={{ color: "var(--text-primary)" }}
+            className="bg-transparent text-sm font-medium outline-none px-2 py-1 rounded min-w-0 max-w-[40vw] md:max-w-xs"
+            style={{ color: "var(--text-primary)", width: `${Math.max(10, (current?.name || "").length + 2)}ch` }}
             value={current?.name || ""}
             onChange={(e) => updateCurrent((d) => ({ ...d, name: e.target.value }))}
+            aria-label="Diagram name"
+            title={current?.name}
           />
           {current && (
             <div className="ml-2 hidden md:block">
@@ -856,7 +869,7 @@ export default function DiagramsPage() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 max-md:flex-wrap">
           <button
             onClick={() => { setMode("select"); setConnectFrom(null); }}
             className="p-1.5 rounded text-xs"
@@ -865,6 +878,7 @@ export default function DiagramsPage() {
               color: mode === "select" ? "var(--text-primary)" : "var(--text-secondary)",
             }}
             title="Select & Move (Esc)"
+            aria-label="Select and move"
           >
             <MousePointer className="w-4 h-4" />
           </button>
@@ -875,7 +889,8 @@ export default function DiagramsPage() {
               background: mode === "connect" ? "var(--bg-hover)" : "transparent",
               color: mode === "connect" ? "var(--text-primary)" : "var(--text-secondary)",
             }}
-            title="Connect nodes"
+            title="Connect nodes: click the first node, then the second"
+            aria-label="Connect nodes"
           >
             <Link2 className="w-4 h-4" />
           </button>
@@ -887,7 +902,7 @@ export default function DiagramsPage() {
             <button
               onClick={() => setShowNodeMenu(!showNodeMenu)}
               className="flex items-center gap-1 px-2 py-1 rounded text-xs"
-              style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+              style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
             >
               <Plus className="w-3.5 h-3.5" />
               Add Node
@@ -921,7 +936,8 @@ export default function DiagramsPage() {
               onClick={toggleEdgeType}
               className="px-2 py-1 rounded text-xs"
               style={{ color: "var(--text-secondary)", background: "var(--bg-card)", border: "1px solid var(--border)" }}
-              title="Toggle edge type"
+              title="Change line style (arrow, dashed, plain)"
+              aria-label="Change line style"
             >
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -929,25 +945,25 @@ export default function DiagramsPage() {
 
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
 
-          <button onClick={() => setZoom((z) => Math.min(3, z * 1.2))} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Zoom in">
+          <button onClick={() => setZoom((z) => Math.min(3, z * 1.2))} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Zoom in" aria-label="Zoom in">
             <ZoomIn className="w-4 h-4" />
           </button>
-          <button onClick={() => setZoom((z) => Math.max(0.2, z / 1.2))} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Zoom out">
+          <button onClick={() => setZoom((z) => Math.max(0.2, z / 1.2))} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Zoom out" aria-label="Zoom out">
             <ZoomOut className="w-4 h-4" />
           </button>
-          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Reset view">
+          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Reset view" aria-label="Reset view">
             <RotateCcw className="w-4 h-4" />
           </button>
 
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
 
-          <button onClick={saveDiagram} className="flex items-center gap-1 p-1.5 rounded text-xs" style={{ color: "var(--green)" }} title="Save">
-            {savedFlash ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {savedFlash && "Saved"}
-          </button>
-          <button onClick={exportPng} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Export PNG">
-            <Download className="w-4 h-4" />
-          </button>
+          <SaveIndicator state={autosave.state} className="px-1" />
+          <ExportMenu
+            items={[
+              { label: "PNG image", description: "The diagram as you see it", onClick: exportPng },
+              { label: "JSON", description: "Nodes and links, to re-import or use in code", onClick: exportJson },
+            ]}
+          />
         </div>
       </div>
 
@@ -956,11 +972,11 @@ export default function DiagramsPage() {
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full outline-none"
-          style={{ cursor: mode === "connect" ? "crosshair" : dragging ? "grabbing" : panning ? "grabbing" : "default" }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          style={{ cursor: mode === "connect" ? "crosshair" : dragging ? "grabbing" : panning ? "grabbing" : "default", touchAction: "none" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handleMouseMove}
+          onPointerUp={handleMouseUp}
+          onPointerCancel={handleMouseUp}
           onWheel={handleWheel}
           onDoubleClick={handleDoubleClick}
         />
@@ -1035,13 +1051,22 @@ export default function DiagramsPage() {
           </div>
         )}
 
+        {/* Empty diagram hint */}
+        {current && current.nodes.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-6">
+            <p className="text-sm text-center max-w-sm" style={{ color: "var(--text-secondary)" }}>
+              Empty diagram. Use <b style={{ color: "var(--text-primary)" }}>Add Node</b> to place a box, then the link tool to connect two boxes. Double-click a box or line to rename it.
+            </p>
+          </div>
+        )}
+
         {/* Mode hint */}
         {mode === "connect" && (
           <div
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-xs"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-xs text-center max-md:w-[90%]"
             style={{ background: "var(--bg-card)", color: "var(--accent)", border: "1px solid var(--accent)" }}
           >
-            {connectFrom ? "Click a target node to connect" : "Click a source node to start connection"} · Esc to cancel
+            {connectFrom ? "Now click the second node" : "Connect: click the first node, then the second"} · Esc to cancel
           </div>
         )}
       </div>

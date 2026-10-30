@@ -1,15 +1,19 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Plus, Trash2, Download, Package, Check, FileJson } from "lucide-react";
+import { Plus, Trash2, Package, Check, Images, Link2 } from "lucide-react";
 import { storage } from "@/lib/storage";
 import { loadImage, spriteFrameSrc } from "@/lib/pixels";
 import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { useHistory } from "@/hooks/useHistory";
+import { useAutosave } from "@/hooks/useAutosave";
+import { ExportMenu } from "@/components/ExportMenu";
+import { SaveIndicator } from "@/components/SaveIndicator";
+import { ExamplesBar } from "@/components/ExamplesBar";
 import type { Sprite, SpriteSheet } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -53,6 +57,13 @@ function computeLayout(sprites: Sprite[], padding: number): Layout {
 }
 
 const inputStyle = { background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" };
+const secondaryBtn = { color: "var(--text-primary)", border: "1px solid var(--border)" };
+
+interface Selection {
+  id: string | null;
+  spriteIds: string[];
+  padding: number;
+}
 
 export default function SpriteSheetPage() {
   const params = useParams();
@@ -63,7 +74,11 @@ export default function SpriteSheetPage() {
   const [current, setCurrent] = useState<SpriteSheet | null>(null);
   const [selectedSpriteIds, setSelectedSpriteIds] = useState<string[]>([]);
   const [padding, setPadding] = useState(1);
-  const selection = useMemo(() => ({ spriteIds: selectedSpriteIds, padding }), [selectedSpriteIds, padding]);
+  // id travels with the selection so a save that lands after switching sheets goes to the right one
+  const selection = useMemo<Selection>(
+    () => ({ id: current?.id ?? null, spriteIds: selectedSpriteIds, padding }),
+    [current?.id, selectedSpriteIds, padding]
+  );
   const history = useHistory(
     selection,
     (v) => {
@@ -75,7 +90,8 @@ export default function SpriteSheetPage() {
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [rendering, setRendering] = useState(false);
-  const [savedFlash, setSavedFlash] = useState(false);
+  // phones only: which side panel is open (desktop always shows both)
+  const [mobilePanel, setMobilePanel] = useState<"sheets" | "links" | null>("sheets");
 
   const sprites = useMemo(
     () => storage.getAll("sprites", projectId),
@@ -126,18 +142,52 @@ export default function SpriteSheetPage() {
     };
   }, [current, layout]);
 
+  const saveSelection = useCallback(
+    (v: Selection) => {
+      if (!v.id) return;
+      const stored = storage.getById("spritesheets", v.id, projectId);
+      if (!stored) return; // deleted while a save was pending
+      storage.save(
+        "spritesheets",
+        { ...stored, spriteIds: v.spriteIds, padding: v.padding, updatedAt: new Date().toISOString() } as SpriteSheet,
+        projectId
+      );
+    },
+    [projectId]
+  );
+  const autosave = useAutosave(selection, saveSelection, { resetKey: current?.id, enabled: !!current });
+  const flushSave = autosave.flush;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        flushSave();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flushSave]);
+
   function selectSheet(sheet: SpriteSheet) {
     setCurrent(sheet);
     setSelectedSpriteIds(sheet.spriteIds);
     setPadding(sheet.padding);
   }
 
-  function createSheet() {
-    if (!newName.trim()) return;
+  const defaultName = () => `Sheet ${sheets.length + 1}`;
+
+  function openNewForm() {
+    setNewName(defaultName());
+    setShowNew(true);
+    setMobilePanel("sheets");
+  }
+
+  function createSheet(name = newName) {
     const sheet: SpriteSheet = {
       id: uuid(),
       projectId,
-      name: newName.trim(),
+      name: name.trim() || defaultName(),
       spriteIds: selectedSpriteIds,
       padding,
       powerOfTwo: false,
@@ -151,15 +201,6 @@ export default function SpriteSheetPage() {
 
   function toggleSprite(id: string) {
     setSelectedSpriteIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
-  }
-
-  function updateSheet() {
-    if (!current) return;
-    const updated = { ...current, spriteIds: selectedSpriteIds, padding };
-    storage.save("spritesheets", updated, projectId);
-    setCurrent(updated);
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 1500);
   }
 
   function deleteSheet(id: string) {
@@ -192,16 +233,37 @@ export default function SpriteSheetPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  const dirty = !!current && (current.padding !== padding || current.spriteIds.join() !== selectedSpriteIds.join());
+  const mobileToggle = (panel: "sheets" | "links", label: string, Icon: typeof Images) => (
+    <button
+      onClick={() => setMobilePanel((p) => (p === panel ? null : panel))}
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs"
+      style={{ ...secondaryBtn, background: mobilePanel === panel ? "var(--bg-hover)" : "transparent" }}
+      aria-expanded={mobilePanel === panel}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </button>
+  );
 
   return (
-    <div className="flex h-full" style={{ background: "var(--bg-primary)" }}>
+    <div className="flex max-md:flex-col h-full max-md:h-auto max-md:min-h-full" style={{ background: "var(--bg-primary)" }}>
+      {/* Phones: toggles for the side panels */}
+      <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
+        {mobileToggle("sheets", "Sheets & sprites", Images)}
+        {current && mobileToggle("links", "Links", Link2)}
+      </div>
+
       {/* Left: sheet list + sprite selector */}
-      <div className="w-60 shrink-0 border-r flex flex-col overflow-y-auto" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
+      <div
+        className={`w-60 max-md:w-full shrink-0 border-r max-md:border-r-0 max-md:border-b flex-col overflow-y-auto max-md:max-h-[55vh] ${
+          mobilePanel === "sheets" ? "flex" : "max-md:hidden flex"
+        }`}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
+      >
         <div className="p-3 border-b" style={{ borderColor: "var(--border)" }}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Sprite Sheets</span>
-            <button onClick={() => setShowNew(true)} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New sprite sheet">
+            <button onClick={openNewForm} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New sprite sheet" aria-label="New sprite sheet">
               <Plus className="w-4 h-4" />
             </button>
           </div>
@@ -214,11 +276,12 @@ export default function SpriteSheetPage() {
                 onKeyDown={(e) => e.key === "Enter" && createSheet()}
                 className="w-full px-2 py-1 rounded text-xs outline-none"
                 style={inputStyle}
+                aria-label="Sprite sheet name"
                 autoFocus
               />
               <div className="flex gap-1">
-                <button onClick={createSheet} className="flex-1 px-2 py-1 rounded text-xs font-medium" style={{ background: "var(--accent)", color: "white" }}>Create</button>
-                <button onClick={() => setShowNew(false)} className="px-2 py-1 rounded text-xs" style={{ color: "var(--text-secondary)" }}>Cancel</button>
+                <button onClick={() => createSheet()} className="flex-1 px-2 py-1 rounded text-xs font-medium" style={{ background: "var(--accent)", color: "white" }}>Create</button>
+                <button onClick={() => setShowNew(false)} className="px-2 py-1 rounded text-xs" style={secondaryBtn}>Cancel</button>
               </div>
             </div>
           )}
@@ -228,15 +291,25 @@ export default function SpriteSheetPage() {
                 key={s.id}
                 className="group flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer"
                 style={{ background: current?.id === s.id ? "var(--bg-hover)" : "transparent", color: "var(--text-primary)" }}
-                onClick={() => selectSheet(s)}
+                onClick={() => {
+                  selectSheet(s);
+                  setMobilePanel(null);
+                }}
               >
                 <span className="truncate">{s.name}</span>
-                <button onClick={(e) => { e.stopPropagation(); deleteSheet(s.id); }} className="opacity-0 group-hover:opacity-100" style={{ color: "var(--red)" }} title="Delete">
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteSheet(s.id); }}
+                  className="opacity-0 group-hover:opacity-100 max-md:opacity-100"
+                  style={{ color: "var(--red)" }}
+                  title={`Delete ${s.name}`}
+                  aria-label={`Delete ${s.name}`}
+                >
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>
             ))}
           </div>
+          <ExamplesBar projectId={projectId} collections={["spritesheets"]} className="mt-3" />
         </div>
 
         <div className="p-3 flex-1 overflow-y-auto">
@@ -257,6 +330,7 @@ export default function SpriteSheetPage() {
                   <button
                     key={s.id}
                     onClick={() => toggleSprite(s.id)}
+                    aria-pressed={selected}
                     className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left"
                     style={{ background: selected ? "var(--accent-glow)" : "transparent", color: "var(--text-primary)" }}
                   >
@@ -281,25 +355,15 @@ export default function SpriteSheetPage() {
               })}
             </div>
           )}
-          {current && (
-            <button
-              onClick={updateSheet}
-              disabled={!dirty && !savedFlash}
-              className="w-full mt-3 px-2 py-1.5 rounded text-xs font-medium"
-              style={{ background: dirty ? "var(--accent)" : "var(--bg-card)", color: dirty ? "white" : "var(--text-secondary)", border: "1px solid var(--border)" }}
-            >
-              {savedFlash ? "Saved" : dirty ? "Save changes" : "Up to date"}
-            </button>
-          )}
         </div>
       </div>
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="h-10 flex items-center gap-3 px-3 border-b shrink-0" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
+      <div className="flex-1 flex flex-col overflow-hidden max-md:min-h-[60vh]">
+        <div className="h-10 flex items-center gap-3 px-3 border-b shrink-0 max-md:overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
           <UndoRedoButtons history={history} />
-          <div className="w-px h-5" style={{ background: "var(--border)" }} />
-          <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
+          <div className="w-px h-5 shrink-0" style={{ background: "var(--border)" }} />
+          <label className="flex items-center gap-1.5 text-xs shrink-0" style={{ color: current ? "var(--text-secondary)" : "var(--text-muted)" }}>
             Padding
             <input
               type="number"
@@ -307,27 +371,32 @@ export default function SpriteSheetPage() {
               max={16}
               value={padding}
               onChange={(e) => setPadding(Math.max(0, Math.min(16, +e.target.value || 0)))}
-              className="w-12 px-1 py-0.5 rounded text-xs outline-none"
+              disabled={!current}
+              className="w-12 px-1 py-0.5 rounded text-xs outline-none disabled:opacity-40"
               style={inputStyle}
             />
             px
           </label>
-          <button onClick={exportPNG} disabled={!current || rendering} className="flex items-center gap-1 px-2 py-1 rounded text-xs" style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
-            <Download className="w-3 h-3" />
-            PNG
-          </button>
-          <button onClick={exportAtlas} disabled={!current} className="flex items-center gap-1 px-2 py-1 rounded text-xs" style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
-            <FileJson className="w-3 h-3" />
-            Atlas JSON
-          </button>
-          {current && (
-            <span className="ml-auto text-xs" style={{ color: "var(--text-muted)" }}>
-              {layout.frames.length} frames · {layout.width}×{layout.height}px
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-3 shrink-0">
+            {current && (
+              <>
+                <span className="text-xs max-md:hidden" style={{ color: "var(--text-muted)" }}>
+                  {layout.frames.length} frames · {layout.width}×{layout.height}px
+                </span>
+                <SaveIndicator state={autosave.state} />
+              </>
+            )}
+            <ExportMenu
+              disabled={!current || layout.frames.length === 0}
+              items={[
+                { label: "PNG", description: "The packed sheet image", onClick: exportPNG, disabled: rendering },
+                { label: "Atlas JSON", description: "Frame positions for your engine", onClick: exportAtlas },
+              ]}
+            />
+          </div>
         </div>
 
-        <div className="flex-1 overflow-auto flex">
+        <div className="flex-1 overflow-auto flex max-md:flex-col">
           <div className="flex-1 overflow-auto flex items-center justify-center p-6">
             {current ? (
               layout.frames.length === 0 ? (
@@ -348,15 +417,31 @@ export default function SpriteSheetPage() {
                 />
               )
             ) : (
-              <div className="text-center" style={{ color: "var(--text-muted)" }}>
+              <div className="text-center max-w-xs" style={{ color: "var(--text-muted)" }}>
                 <Package className="w-12 h-12 mx-auto mb-3" />
-                <p>Select or create a sprite sheet</p>
-                <p className="text-xs mt-1">Each sprite gets its own row, with its animation frames left to right</p>
+                <p style={{ color: "var(--text-secondary)" }}>Pack sprites into one image for your game engine.</p>
+                <p className="text-xs mt-1 mb-4">Each sprite gets its own row, with its animation frames left to right.</p>
+                <button
+                  onClick={() => createSheet(defaultName())}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
+                  style={{ background: "var(--accent)", color: "white" }}
+                >
+                  <Plus className="w-4 h-4" />
+                  New sprite sheet
+                </button>
+                {selectedSpriteIds.length > 0 && (
+                  <p className="text-[11px] mt-2">Starts with the {selectedSpriteIds.length} sprite{selectedSpriteIds.length === 1 ? "" : "s"} you picked.</p>
+                )}
               </div>
             )}
           </div>
           {current && (
-            <div className="w-56 shrink-0 border-l p-3 overflow-y-auto" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
+            <div
+              className={`w-56 max-md:w-full shrink-0 border-l max-md:border-l-0 max-md:border-t p-3 overflow-y-auto ${
+                mobilePanel === "links" ? "" : "max-md:hidden"
+              }`}
+              style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
+            >
               <LinkedAssets projectId={projectId} type="spritesheet" id={current.id} layout="panel" />
             </div>
           )}

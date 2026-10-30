@@ -20,6 +20,7 @@ export const ASSET_KINDS: Record<AssetType, AssetKind> = {
   palette: { type: "palette", collection: "palettes", label: "Palette", path: "palettes", color: "#2dd4bf" },
   spritesheet: { type: "spritesheet", collection: "spritesheets", label: "Sprite sheet", path: "sprites", color: "#38bdf8" },
   note: { type: "note", collection: "notes", label: "Note", path: "notebook", color: "#a3e635" },
+  issue: { type: "issue", collection: "issues", label: "Issue", path: "board", color: "#e879f9" },
 };
 
 export const ASSET_TYPES = Object.keys(ASSET_KINDS) as AssetType[];
@@ -45,13 +46,13 @@ type AnyAsset = {
 };
 
 export function summarize(type: AssetType, raw: unknown): AssetSummary {
-  const a = raw as AnyAsset;
+  const a = raw as AnyAsset & { key?: string; description?: string };
   return {
     type,
     id: a.id,
-    name: a.name || a.title || "Untitled",
+    name: type === "issue" && a.key ? `${a.key} ${a.title ?? ""}`.trim() : a.name || a.title || "Untitled",
     thumbnail: type === "sprite" ? a.frames?.[0]?.pixels : undefined,
-    excerpt: a.content ? a.content.replace(/[#*_>`\[\]]/g, "").slice(0, 160) : undefined,
+    excerpt: (a.content ?? a.description) ? (a.content ?? a.description)!.replace(/[#*_>`\[\]]/g, "").slice(0, 160) : undefined,
     updatedAt: a.updatedAt ?? a.createdAt,
   };
 }

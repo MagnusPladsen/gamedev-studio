@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   Pencil,
   Eraser,
@@ -23,21 +24,24 @@ import {
   Copy,
   ChevronUp,
   ChevronDown,
-  Download,
-  Save,
   FilePlus,
   Layers,
-  Image as ImageIcon,
   Film,
   Maximize2,
+  PanelTopOpen,
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
 import { useUndoShortcuts } from "@/hooks/useHistory";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { storage } from "@/lib/storage";
 import { getLoadedImage, loadImage } from "@/lib/pixels";
-import { useOpenParam } from "@/hooks/useStorage";
+import { encodeGif } from "@/lib/gif";
+import { useOpenParam, useStorageVersion } from "@/hooks/useStorage";
+import { useAutosave } from "@/hooks/useAutosave";
 import { LinkedAssets } from "@/components/LinkedAssets";
+import { SaveIndicator } from "@/components/SaveIndicator";
+import { ExportMenu } from "@/components/ExportMenu";
+import { ExamplesBar } from "@/components/ExamplesBar";
 import type { Sprite, SpriteFrame } from "@/types";
 
 // ─── types ───────────────────────────────────────────────────────────
@@ -61,116 +65,6 @@ interface HistoryEntry {
   activeFrame: number;
   activeLayer: number;
 }
-
-// ─── example sprites ─────────────────────────────────────────────────
-function makePixelData(w: number, h: number, fn: (x: number, y: number) => [number, number, number, number]): Uint8ClampedArray {
-  const d = new Uint8ClampedArray(w * h * 4);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const [r, g, b, a] = fn(x, y);
-      const i = (y * w + x) * 4;
-      d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a;
-    }
-  }
-  return d;
-}
-
-const EXAMPLES: { name: string; w: number; h: number; build: () => Uint8ClampedArray }[] = [
-  {
-    name: "Sword",
-    w: 16, h: 16,
-    build() {
-      // prettier-ignore
-      const map = [
-        "................",
-        "..............X.",
-        ".............XX.",
-        "............XGX.",
-        "...........XGX..",
-        "..........XGX...",
-        ".........XGX....",
-        "........XGX.....",
-        ".......XGX......",
-        "......XGX.......",
-        ".B...XGX........",
-        "..B.XGX.........",
-        "...BGX..........",
-        "..BBBB..........",
-        ".B..BB..........",
-        "................",
-      ];
-      return makePixelData(16, 16, (x, y) => {
-        const c = map[y]?.[x];
-        if (c === "X") return [180, 180, 200, 255];
-        if (c === "G") return [220, 220, 240, 255];
-        if (c === "B") return [120, 80, 40, 255];
-        return [0, 0, 0, 0];
-      });
-    },
-  },
-  {
-    name: "Heart",
-    w: 16, h: 16,
-    build() {
-      // prettier-ignore
-      const map = [
-        "................",
-        "..RRR....RRR....",
-        ".RRRRR..RRRRR...",
-        ".RRHRRRRRRRRR...",
-        ".RRRRRRRRRRRR...",
-        ".RRRRRRRRRRRR...",
-        "..RRRRRRRRRR....",
-        "...RRRRRRRR.....",
-        "....RRRRRR......",
-        ".....RRRR.......",
-        "......RR........",
-        "................",
-        "................",
-        "................",
-        "................",
-        "................",
-      ];
-      return makePixelData(16, 16, (x, y) => {
-        const c = map[y]?.[x];
-        if (c === "R") return [220, 40, 60, 255];
-        if (c === "H") return [255, 120, 140, 255];
-        return [0, 0, 0, 0];
-      });
-    },
-  },
-  {
-    name: "Coin",
-    w: 16, h: 16,
-    build() {
-      // prettier-ignore
-      const map = [
-        "................",
-        ".....YYYY.......",
-        "....YGGGYY.....",
-        "...YGGGGGYY....",
-        "...YGGYYGYY....",
-        "...YGGYYGGY....",
-        "...YGGGGGYY....",
-        "...YGGGGGYY....",
-        "...YGGYYGGY....",
-        "...YGGYYGYY....",
-        "...YGGGGGYY....",
-        "....YGGGYY.....",
-        ".....YYYY.......",
-        "................",
-        "................",
-        "................",
-      ];
-      return makePixelData(16, 16, (x, y) => {
-        const c = map[y]?.[x];
-        if (c === "Y") return [200, 160, 40, 255];
-        if (c === "G") return [255, 210, 80, 255];
-        return [0, 0, 0, 0];
-      });
-    },
-  },
-];
 
 // ─── helpers ─────────────────────────────────────────────────────────
 function imageDataToBase64(data: ImageData): string {
@@ -274,20 +168,45 @@ const DEFAULT_PALETTE = [
 const SIZES = [8, 16, 24, 32, 48, 64, 96, 128].map((n) => ({ label: `${n}×${n}`, w: n, h: n }));
 const MAX_SIZE = 256;
 
-const TOOL_ICONS: Record<Tool, typeof Pencil> = {
-  pencil: Pencil, eraser: Eraser, fill: PaintBucket, line: Minus,
-  rect: Square, circle: Circle, picker: Pipette, move: Move,
+const TOOL_META: Record<Tool, { icon: typeof Pencil; label: string; key: string }> = {
+  pencil: { icon: Pencil, label: "Pencil", key: "B" },
+  eraser: { icon: Eraser, label: "Eraser", key: "E" },
+  fill: { icon: PaintBucket, label: "Fill", key: "G" },
+  line: { icon: Minus, label: "Line", key: "L" },
+  rect: { icon: Square, label: "Rectangle", key: "R" },
+  circle: { icon: Circle, label: "Circle", key: "O" },
+  picker: { icon: Pipette, label: "Colour picker", key: "I" },
+  move: { icon: Move, label: "Move", key: "M" },
 };
+const TOOL_BY_KEY = Object.fromEntries(
+  (Object.keys(TOOL_META) as Tool[]).map((t) => [TOOL_META[t].key.toLowerCase(), t])
+) as Record<string, Tool>;
+const DEFAULT_NAME = "Untitled sprite";
+
+function isTypingTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
+  return el instanceof HTMLInputElement && !["range", "checkbox", "radio", "color", "button"].includes(el.type);
+}
 
 export default function PixelArtPage() {
   const params = useParams();
   const projectId = params.projectId as string;
 
+  const searchParams = useSearchParams();
+  const version = useStorageVersion();
+
   // ── sprite list ──
-  const [sprites, setSprites] = useState<Sprite[]>([]);
-  const [spritesLoaded, setSpritesLoaded] = useState(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sprites = useMemo(() => storage.getAll("sprites", projectId), [projectId, version]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const projectPalettes = useMemo(() => storage.getAll("palettes", projectId), [projectId, version]);
   const [activeSpriteId, setActiveSpriteId] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  // false only for the blank canvas shown on arrival; the first edit turns autosave on
+  const [touched, setTouched] = useState(false);
+  const deletedRef = useRef(new Set<string>());
+  const [mobilePanel, setMobilePanel] = useState(false);
+  const [paletteSource, setPaletteSource] = useState("default");
   const [imageTick, setImageTick] = useState(0);
   const requestRedraw = useCallback(() => setImageTick((t) => t + 1), []);
 
@@ -318,7 +237,7 @@ export default function PixelArtPage() {
   const [fps, setFps] = useState(8);
   const [previewFrame, setPreviewFrame] = useState(0);
   const [showNewDialog, setShowNewDialog] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [newName, setNewName] = useState(DEFAULT_NAME);
   const [customW, setCustomW] = useState("32");
   const [customH, setCustomH] = useState("32");
 
@@ -342,12 +261,6 @@ export default function PixelArtPage() {
   const lastPixelRef = useRef<{ x: number; y: number } | null>(null);
   const overlayRef = useRef<ImageData | null>(null);
 
-  // ── init: load sprites ──
-  useEffect(() => {
-    const list = storage.getAll("sprites", projectId);
-    setSprites(list);
-    setSpritesLoaded(true);
-  }, [projectId]);
 
   // ── build initial blank frame ──
   function makeBlankFrame(w: number, h: number): FrameData {
@@ -359,22 +272,27 @@ export default function PixelArtPage() {
   }
 
   // ── new sprite ──
-  function createNewSprite(name: string, w: number, h: number, exampleData?: Uint8ClampedArray) {
+  /** A fresh blank sprite. `save` stores it right away; otherwise it saves on the first edit. */
+  function startSprite(w: number, h: number, save: boolean) {
+    const id = uuid();
+    const frame = makeBlankFrame(w, h);
     setCanvasW(w);
     setCanvasH(h);
-    const frame = makeBlankFrame(w, h);
-    if (exampleData) {
-      const id = new ImageData(exampleData as unknown as Uint8ClampedArray<ArrayBuffer>, w, h);
-      frame.layers[0].pixels = imageDataToBase64(id);
-    }
     setFrames([frame]);
     setActiveFrame(0);
     setActiveLayer(0);
-    setActiveSpriteId(null);
-    setNewName(name);
+    setActiveSpriteId(id);
+    setNewName(DEFAULT_NAME);
+    setTouched(save);
     historyRef.current = [];
     historyIdxRef.current = -1;
-    pushHistory([frame], 0, 0);
+    pushHistory([frame], 0, 0, false);
+    if (save) void persist({ id, name: DEFAULT_NAME, w, h, frames: [frame], fps });
+  }
+
+  function createNewSprite(w: number, h: number) {
+    startSprite(w, h, true);
+    setMobilePanel(false);
   }
 
   // ── load sprite ──
@@ -396,69 +314,80 @@ export default function PixelArtPage() {
     setFrames(loaded);
     setActiveFrame(0);
     setActiveLayer(0);
+    setTouched(true);
+    setMobilePanel(false);
     historyRef.current = [];
     historyIdxRef.current = -1;
-    pushHistory(loaded, 0, 0);
+    pushHistory(loaded, 0, 0, false);
   }
 
   useOpenParam((id) => {
     const s = storage.getById("sprites", id, projectId);
     if (s) loadSprite(s);
-  }, spritesLoaded);
+  });
 
-  // ── save sprite ──
-  async function saveSprite() {
-    if (saveState === "saving") return;
-    setSaveState("saving");
-    const name = newName.trim() || "Untitled";
+  // ── autosave ──
+  type Doc = { id: string | null; name: string; w: number; h: number; frames: FrameData[]; fps: number };
+  const doc = useMemo<Doc>(
+    () => ({ id: activeSpriteId, name: newName, w: canvasW, h: canvasH, frames, fps }),
+    [activeSpriteId, newName, canvasW, canvasH, frames, fps]
+  );
+
+  async function persist(d: Doc) {
+    if (!d.id || deletedRef.current.has(d.id) || d.frames.length === 0) return;
     const spriteFrames: SpriteFrame[] = await Promise.all(
-      frames.map(async (f) => ({
+      d.frames.map(async (f) => ({
         id: f.id,
-        pixels: await compositeFrame(f),
+        pixels: await compositeFrame(f, d.w, d.h),
         duration: f.duration,
         layers: f.layers.map((l) => ({ id: l.id, name: l.name, visible: l.visible, pixels: l.pixels })),
       }))
     );
+    if (deletedRef.current.has(d.id)) return;
+    const existing = storage.getById("sprites", d.id, projectId);
+    // once you edit an example it becomes your own work, so "Remove examples" leaves it alone
+    const { example: _wasExample, ...rest } = (existing ?? {}) as Partial<Sprite> & { example?: boolean };
+    void _wasExample;
+    const now = new Date().toISOString();
     const sprite: Sprite = {
-      id: activeSpriteId || uuid(),
+      ...rest,
+      id: d.id,
       projectId,
-      name,
-      width: canvasW,
-      height: canvasH,
+      name: d.name.trim() || DEFAULT_NAME,
+      width: d.w,
+      height: d.h,
       frames: spriteFrames,
-      fps,
-      tags: [],
-      createdAt: activeSpriteId
-        ? sprites.find((s) => s.id === activeSpriteId)?.createdAt || new Date().toISOString()
-        : new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      fps: d.fps,
+      tags: existing?.tags ?? [],
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
     };
     storage.save("sprites", sprite, projectId);
-    setActiveSpriteId(sprite.id);
-    setSprites(storage.getAll("sprites", projectId));
-    setSaveState("saved");
-    setTimeout(() => setSaveState("idle"), 1500);
   }
+
+  const { state: saveState, flush } = useAutosave(doc, persist, { resetKey: activeSpriteId, enabled: touched });
+  const savedSpriteId = activeSpriteId && sprites.some((s) => s.id === activeSpriteId) ? activeSpriteId : null;
 
   function deleteSprite(id: string) {
     const s = sprites.find((x) => x.id === id);
-    if (!confirm(`Delete sprite "${s?.name ?? "Untitled"}"?`)) return;
+    if (!confirm(`Delete sprite "${s?.name ?? DEFAULT_NAME}"?`)) return;
+    deletedRef.current.add(id);
     storage.delete("sprites", id, projectId);
-    setSprites(storage.getAll("sprites", projectId));
-    if (activeSpriteId === id) setActiveSpriteId(null);
+    if (activeSpriteId === id) startSprite(canvasW, canvasH, false);
   }
 
   // ── composite all visible layers into one PNG data URL ──
-  async function compositeFrame(frame: FrameData): Promise<string> {
+  async function compositeFrame(frame: FrameData, w: number, h: number): Promise<string> {
     const c = document.createElement("canvas");
-    c.width = canvasW;
-    c.height = canvasH;
+    c.width = w;
+    c.height = h;
     await drawLayers(c.getContext("2d")!, frame.layers);
     return c.toDataURL();
   }
 
   // ── history ──
-  function pushHistory(f: FrameData[], af: number, al: number) {
+  function pushHistory(f: FrameData[], af: number, al: number, edit = true) {
+    if (edit) setTouched(true);
     const entry: HistoryEntry = {
       frames: JSON.parse(JSON.stringify(f)),
       activeFrame: af,
@@ -495,12 +424,48 @@ export default function PixelArtPage() {
   useUndoShortcuts(undo, redo);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveSprite(); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        flush();
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+      const t = TOOL_BY_KEY[e.key.toLowerCase()];
+      if (t) {
+        e.preventDefault();
+        setTool(t);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [flush]);
+
+  // ── palettes: project palettes replace the swatches; ?palette=<id> preselects one ──
+  function choosePalette(source: string) {
+    setPaletteSource(source);
+    if (source === "default") {
+      setPalette(DEFAULT_PALETTE);
+      return;
+    }
+    const p = storage.getById("palettes", source, projectId);
+    if (p?.colors.length) {
+      setPalette(p.colors);
+      setColor(p.colors.find((c) => c.toLowerCase() !== "#000000") ?? p.colors[0]);
+    }
+  }
+  const paletteParam = searchParams.get("palette");
+  useEffect(() => {
+    if (paletteParam && storage.getById("palettes", paletteParam, projectId)) choosePalette(paletteParam);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frames, activeFrame, activeLayer, activeSpriteId, newName, canvasW, canvasH, fps]);
+  }, [paletteParam, projectId]);
+
+  // ── phones: fit the canvas to the screen ──
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia("(max-width: 767px)").matches) return;
+    const byW = Math.floor((window.innerWidth - 32) / canvasW);
+    const byH = Math.floor((window.innerHeight * 0.42) / canvasH);
+    setZoom(Math.max(2, Math.min(40, byW, byH)));
+  }, [canvasW, canvasH]);
 
   // ── render canvas ──
   const renderCanvas = useCallback(async () => {
@@ -616,7 +581,7 @@ export default function PixelArtPage() {
   }
 
   // ── pixel coords from mouse ──
-  function getPixelCoords(e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } | null {
+  function getPixelCoords(e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } | null {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -637,10 +602,11 @@ export default function PixelArtPage() {
   }
 
   // ── mouse handlers ──
-  async function handleMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
+  async function handleMouseDown(e: React.PointerEvent<HTMLCanvasElement>) {
     if (playing) return;
     const p = getPixelCoords(e);
     if (!p) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     isDrawingRef.current = true;
     drawStartRef.current = p;
     lastPixelRef.current = p;
@@ -673,7 +639,7 @@ export default function PixelArtPage() {
     }
   }
 
-  async function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+  async function handleMouseMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!isDrawingRef.current || playing) return;
     const p = getPixelCoords(e);
     if (!p) return;
@@ -832,6 +798,7 @@ export default function PixelArtPage() {
     const next = JSON.parse(JSON.stringify(frames)) as FrameData[];
     next[activeFrame].layers[idx].visible = !next[activeFrame].layers[idx].visible;
     setFrames(next);
+    setTouched(true);
   }
 
   function moveLayerUp() {
@@ -840,6 +807,7 @@ export default function PixelArtPage() {
     const layers = next[activeFrame].layers;
     [layers[activeLayer], layers[activeLayer + 1]] = [layers[activeLayer + 1], layers[activeLayer]];
     setFrames(next);
+    setTouched(true);
     setActiveLayer(activeLayer + 1);
   }
 
@@ -849,6 +817,7 @@ export default function PixelArtPage() {
     const layers = next[activeFrame].layers;
     [layers[activeLayer], layers[activeLayer - 1]] = [layers[activeLayer - 1], layers[activeLayer]];
     setFrames(next);
+    setTouched(true);
     setActiveLayer(activeLayer - 1);
   }
 
@@ -860,7 +829,7 @@ export default function PixelArtPage() {
     await drawLayers(c.getContext("2d")!, frames[activeFrame].layers);
     const a = document.createElement("a");
     a.href = c.toDataURL("image/png");
-    a.download = `${newName || "sprite"}_frame${activeFrame}.png`;
+    a.download = `${newName.trim() || "sprite"}_frame${activeFrame + 1}.png`;
     a.click();
   }
 
@@ -876,24 +845,40 @@ export default function PixelArtPage() {
     }
     const a = document.createElement("a");
     a.href = c.toDataURL("image/png");
-    a.download = `${newName || "sprite"}_sheet.png`;
+    a.download = `${newName.trim() || "sprite"}_sheet.png`;
     a.click();
+  }
+
+  async function exportGif(scale: number) {
+    const gifFrames = await Promise.all(
+      frames.map(async (f) => {
+        const c = document.createElement("canvas");
+        c.width = canvasW;
+        c.height = canvasH;
+        const ctx = c.getContext("2d")!;
+        await drawLayers(ctx, f.layers);
+        return { image: ctx.getImageData(0, 0, canvasW, canvasH), delay: f.duration ?? 1000 / fps };
+      })
+    );
+    const blob = encodeGif(gifFrames, { scale });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${newName.trim() || "sprite"}.gif`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   // ── init with blank if no frames ──
   useEffect(() => {
-    if (frames.length === 0) {
-      const initial = [makeBlankFrame(canvasW, canvasH)];
-      setFrames(initial);
-      pushHistory(initial, 0, 0);
-    }
+    if (frames.length === 0) startSprite(canvasW, canvasH, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── render ──
   const btnStyle = (active?: boolean): React.CSSProperties => ({
     background: active ? "var(--accent)" : "var(--bg-card)",
-    color: active ? "#fff" : "var(--text-secondary)",
+    color: active ? "var(--on-accent, #fff)" : "var(--text-primary)",
     border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
     borderRadius: 6,
     padding: "6px",
@@ -911,22 +896,146 @@ export default function PixelArtPage() {
     padding: 10,
   };
 
+  const smallBtn: React.CSSProperties = { ...btnStyle(), padding: 3 };
+
+  // Sprite list + new-sprite form + links. Shown in the left column on desktop, in a drawer on phones.
+  const spritesPanel = (
+    <div style={panelStyle}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Sprites</span>
+        <button onClick={() => setShowNewDialog((v) => !v)} style={smallBtn} title="New sprite" aria-label="New sprite"><Plus className="w-3 h-3" /></button>
+      </div>
+      <ExamplesBar projectId={projectId} collections={["sprites"]} className="mb-2" />
+      {showNewDialog && (
+        <div className="mb-2 space-y-1.5">
+          <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>New sprite size</div>
+          <div className="flex gap-1 flex-wrap">
+            {SIZES.map((s) => (
+              <button
+                key={s.label}
+                onClick={() => { createNewSprite(s.w, s.h); setShowNewDialog(false); }}
+                className="text-xs px-2 py-1 rounded"
+                style={{ background: "var(--bg-hover)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <input type="number" value={customW} onChange={(e) => setCustomW(e.target.value)} aria-label="Width" className="w-12 text-xs px-1 py-0.5 rounded outline-none" style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>×</span>
+            <input type="number" value={customH} onChange={(e) => setCustomH(e.target.value)} aria-label="Height" className="w-12 text-xs px-1 py-0.5 rounded outline-none" style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
+            <button
+              onClick={() => {
+                const clampSize = (v: string) => Math.max(1, Math.min(MAX_SIZE, Math.round(Number(v)) || 32));
+                createNewSprite(clampSize(customW), clampSize(customH));
+                setShowNewDialog(false);
+              }}
+              className="text-xs px-2 py-0.5 rounded"
+              style={{ background: "var(--accent)", color: "var(--on-accent, #fff)" }}
+            >
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="space-y-0.5 max-h-32 max-md:max-h-48 overflow-y-auto">
+        {sprites.map((s) => (
+          <div
+            key={s.id}
+            className="group flex items-center gap-1.5 w-full text-xs px-2 py-1 rounded cursor-pointer hover:bg-[var(--bg-hover)]"
+            onClick={() => loadSprite(s)}
+            style={{
+              color: activeSpriteId === s.id ? "var(--text-primary)" : "var(--text-secondary)",
+              background: activeSpriteId === s.id ? "var(--bg-hover)" : undefined,
+            }}
+          >
+            {s.frames[0]?.pixels && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={s.frames[0].pixels} alt="" className="w-4 h-4 shrink-0" style={{ imageRendering: "pixelated" }} />
+            )}
+            <span className="flex-1 truncate">{s.name}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); deleteSprite(s.id); }}
+              className="opacity-0 group-hover:opacity-100 max-md:opacity-100 shrink-0"
+              style={{ color: "var(--red)" }}
+              title={`Delete ${s.name}`}
+              aria-label={`Delete ${s.name}`}
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+        {sprites.length === 0 && (
+          <div className="text-xs py-1" style={{ color: "var(--text-muted)" }}>No sprites yet. Start drawing and it saves itself.</div>
+        )}
+      </div>
+      {savedSpriteId && (
+        <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+          <LinkedAssets projectId={projectId} type="sprite" id={savedSpriteId} />
+        </div>
+      )}
+    </div>
+  );
+
+  const layersPanel = (
+    <div style={panelStyle}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Layers</span>
+        <div className="flex gap-0.5">
+          <button onClick={addLayer} style={smallBtn} title="Add layer" aria-label="Add layer"><Plus className="w-3 h-3" /></button>
+          <button onClick={deleteLayer} style={smallBtn} title="Delete layer" aria-label="Delete layer"><Trash2 className="w-3 h-3" /></button>
+        </div>
+      </div>
+      <div className="space-y-0.5">
+        {frames[activeFrame]?.layers.map((layer, i) => (
+          <div
+            key={layer.id}
+            onClick={() => setActiveLayer(i)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer"
+            style={{
+              background: activeLayer === i ? "var(--bg-hover)" : "transparent",
+              color: activeLayer === i ? "var(--text-primary)" : "var(--text-secondary)",
+            }}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(i); }}
+              style={{ color: layer.visible ? "var(--text-secondary)" : "var(--text-muted)" }}
+              title={layer.visible ? "Hide layer" : "Show layer"}
+              aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+            >
+              {layer.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+            </button>
+            <span className="flex-1 truncate">{layer.name}</span>
+          </div>
+        )).reverse()}
+      </div>
+      <div className="flex gap-0.5 mt-1">
+        <button onClick={moveLayerUp} style={smallBtn} title="Move layer up" aria-label="Move layer up"><ChevronUp className="w-3 h-3" /></button>
+        <button onClick={moveLayerDown} style={smallBtn} title="Move layer down" aria-label="Move layer down"><ChevronDown className="w-3 h-3" /></button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "var(--bg-primary)" }}>
       {/* Top bar */}
       <div
-        className="flex items-center justify-between px-4 h-12 shrink-0 border-b"
+        className="flex items-center justify-between px-4 h-12 shrink-0 border-b max-md:h-auto max-md:flex-wrap max-md:gap-2 max-md:py-2 max-md:px-3"
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Sprite name"
-            className="bg-transparent text-sm font-medium outline-none w-40"
-            style={{ color: "var(--text-primary)" }}
-          />
+        <div className="flex items-center gap-3 max-md:gap-2 max-md:flex-wrap">
+          <label className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Name</span>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => { setNewName(e.target.value); setTouched(true); }}
+              placeholder={DEFAULT_NAME}
+              className="bg-transparent text-sm font-medium outline-none w-36 max-md:w-28 px-1.5 py-0.5 rounded"
+              style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }}
+            />
+          </label>
           <div className="relative">
             <button
               onClick={() => {
@@ -944,7 +1053,7 @@ export default function PixelArtPage() {
             </button>
             {sizeMenu && (
               <div
-                className="absolute z-50 top-full left-0 mt-1 w-72 p-3 rounded-lg shadow-xl"
+                className="absolute z-50 top-full left-0 mt-1 w-72 max-w-[calc(100vw-24px)] p-3 rounded-lg shadow-xl"
                 style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
               >
                 <div className="text-xs font-medium mb-2" style={{ color: "var(--text-primary)" }}>Canvas size (pixels)</div>
@@ -961,7 +1070,7 @@ export default function PixelArtPage() {
                         className="text-xs py-1 rounded"
                         style={{
                           background: on ? "var(--accent)" : "var(--bg-hover)",
-                          color: on ? "white" : "var(--text-secondary)",
+                          color: on ? "var(--on-accent, #fff)" : "var(--text-primary)",
                           border: "1px solid var(--border)",
                         }}
                       >
@@ -984,7 +1093,7 @@ export default function PixelArtPage() {
                       setSizeMenu(false);
                     }}
                     className="flex-1 text-xs py-1.5 rounded font-medium"
-                    style={{ background: "var(--accent)", color: "white" }}
+                    style={{ background: "var(--accent)", color: "var(--on-accent, #fff)" }}
                     title="Keep your drawing, centred; larger adds empty space, smaller crops the edges"
                   >
                     Resize this sprite
@@ -992,7 +1101,7 @@ export default function PixelArtPage() {
                   <button
                     onClick={() => {
                       const [w, h] = pickedSize();
-                      createNewSprite("Untitled", w, h);
+                      createNewSprite(w, h);
                       setSizeMenu(false);
                     }}
                     className="flex-1 text-xs py-1.5 rounded"
@@ -1008,13 +1117,23 @@ export default function PixelArtPage() {
             )}
           </div>
           <button
-            onClick={() => setShowNewDialog(true)}
+            onClick={() => { setShowNewDialog(true); setMobilePanel(true); }}
             className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs"
-            style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
-            title="Start a new sprite or open an example"
+            style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }}
+            title="Start a new sprite"
           >
             <Plus className="w-3.5 h-3.5" />
             New sprite
+          </button>
+          <button
+            onClick={() => setMobilePanel((v) => !v)}
+            className="md:hidden flex items-center gap-1 px-2.5 py-1 rounded-md text-xs"
+            style={{ color: "var(--text-primary)", border: "1px solid var(--border)", background: mobilePanel ? "var(--bg-hover)" : undefined }}
+            aria-expanded={mobilePanel}
+            title="Sprites, layers and links"
+          >
+            <PanelTopOpen className="w-3.5 h-3.5" />
+            Sprites &amp; layers
           </button>
         </div>
         <div className="flex items-center gap-1.5">
@@ -1022,153 +1141,101 @@ export default function PixelArtPage() {
             history={{ undo, redo, ...historyState }}
           />
           <div style={{ width: 1, height: 20, background: "var(--border)", margin: "0 4px" }} />
-          <button
-            onClick={saveSprite}
-            style={{ ...btnStyle(saveState === "saved"), padding: "6px 8px", gap: 4, display: "flex", alignItems: "center" }}
-            title="Save (Ctrl+S)"
-          >
-            <Save className="w-4 h-4" />
-            <span className="text-xs">{saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}</span>
-          </button>
-          <button onClick={exportPNG} style={btnStyle()} title="Export frame as PNG"><Download className="w-4 h-4" /></button>
-          <button onClick={exportSpriteSheet} style={btnStyle()} title="Export sprite sheet"><ImageIcon className="w-4 h-4" /></button>
+          <SaveIndicator state={touched ? saveState : "saved"} />
+          <ExportMenu
+            items={[
+              { label: "PNG (current frame)", description: `Frame ${activeFrame + 1} at ${canvasW}×${canvasH}`, onClick: exportPNG },
+              { label: "Sprite sheet PNG (all frames)", description: `${frames.length} frame${frames.length === 1 ? "" : "s"} in a grid`, onClick: exportSpriteSheet },
+              { label: "Animated GIF", description: "All frames, loops, 4× size", onClick: () => exportGif(4) },
+              { label: "Animated GIF (1× size)", description: `All frames, loops, ${canvasW}×${canvasH}`, onClick: () => exportGif(1) },
+            ]}
+          />
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left panel: sprites + tools + palette */}
-        <div className="w-52 shrink-0 flex flex-col gap-2 p-2 overflow-y-auto border-r" style={{ borderColor: "var(--border)" }}>
-          {/* Sprites list */}
-          <div style={panelStyle}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Sprites</span>
-              <button onClick={() => setShowNewDialog(true)} style={{ ...btnStyle(), padding: 3 }}><Plus className="w-3 h-3" /></button>
-            </div>
-            {showNewDialog && (
-              <div className="mb-2 space-y-1.5">
-                <div className="flex gap-1 flex-wrap">
-                  {SIZES.map((s) => (
-                    <button
-                      key={s.label}
-                      onClick={() => { createNewSprite("Untitled", s.w, s.h); setShowNewDialog(false); }}
-                      className="text-xs px-2 py-1 rounded"
-                      style={{ background: "var(--bg-hover)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-1">
-                  <input type="number" value={customW} onChange={(e) => setCustomW(e.target.value)} className="w-12 text-xs px-1 py-0.5 rounded outline-none" style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>×</span>
-                  <input type="number" value={customH} onChange={(e) => setCustomH(e.target.value)} className="w-12 text-xs px-1 py-0.5 rounded outline-none" style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }} />
-                  <button
-                    onClick={() => { createNewSprite("Untitled", Number(customW) || 32, Number(customH) || 32); setShowNewDialog(false); }}
-                    className="text-xs px-2 py-0.5 rounded"
-                    style={{ background: "var(--accent)", color: "white" }}
-                  >
-                    Go
-                  </button>
-                </div>
-                <div className="border-t pt-1.5 mt-1" style={{ borderColor: "var(--border)" }}>
-                  <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>Examples:</div>
-                  {EXAMPLES.map((ex) => (
-                    <button
-                      key={ex.name}
-                      onClick={() => { createNewSprite(ex.name, ex.w, ex.h, ex.build()); setShowNewDialog(false); }}
-                      className="block w-full text-left text-xs px-2 py-1 rounded mb-0.5"
-                      style={{ color: "var(--text-secondary)", background: "var(--bg-hover)" }}
-                    >
-                      {ex.name} ({ex.w}×{ex.h})
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="space-y-0.5 max-h-32 overflow-y-auto">
-              {sprites.map((s) => (
-                <div
-                  key={s.id}
-                  className="group flex items-center gap-1.5 w-full text-xs px-2 py-1 rounded cursor-pointer"
-                  onClick={() => loadSprite(s)}
-                  style={{
-                    color: activeSpriteId === s.id ? "var(--text-primary)" : "var(--text-secondary)",
-                    background: activeSpriteId === s.id ? "var(--bg-hover)" : "transparent",
-                  }}
-                >
-                  {s.frames[0]?.pixels && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.frames[0].pixels} alt="" className="w-4 h-4 shrink-0" style={{ imageRendering: "pixelated" }} />
-                  )}
-                  <span className="flex-1 truncate">{s.name}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteSprite(s.id); }}
-                    className="opacity-0 group-hover:opacity-100 shrink-0"
-                    style={{ color: "var(--red)" }}
-                    title="Delete sprite"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-              {sprites.length === 0 && (
-                <div className="text-xs py-1" style={{ color: "var(--text-muted)" }}>No sprites yet</div>
-              )}
-            </div>
-            <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
-              <LinkedAssets projectId={projectId} type="sprite" id={activeSpriteId} />
-            </div>
-          </div>
+      {/* Phones: sprites, layers and links in a drawer under the toolbar */}
+      {mobilePanel && (
+        <div className="md:hidden shrink-0 max-h-[50dvh] overflow-y-auto p-2 space-y-2 border-b" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
+          {spritesPanel}
+          {layersPanel}
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden max-md:flex-col">
+        {/* Left panel: sprites + tools + palette (phones: a scrollable strip of tools and colours) */}
+        <div className="w-52 shrink-0 flex flex-col gap-2 p-2 overflow-y-auto border-r max-md:w-full max-md:flex-row max-md:overflow-x-auto max-md:overflow-y-hidden max-md:border-r-0 max-md:border-b" style={{ borderColor: "var(--border)" }}>
+          <div className="max-md:hidden">{spritesPanel}</div>
 
           {/* Tools */}
-          <div style={panelStyle}>
+          <div style={panelStyle} className="max-md:shrink-0">
             <div className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Tools</div>
             <div className="grid grid-cols-4 gap-1">
-              {(Object.keys(TOOL_ICONS) as Tool[]).map((t) => {
-                const Icon = TOOL_ICONS[t];
+              {(Object.keys(TOOL_META) as Tool[]).map((t) => {
+                const { icon: Icon, label, key } = TOOL_META[t];
                 return (
-                  <button key={t} onClick={() => setTool(t)} style={btnStyle(tool === t)} title={t}>
+                  <button key={t} onClick={() => setTool(t)} style={btnStyle(tool === t)} title={`${label} (${key})`} aria-label={`${label} (${key})`} aria-pressed={tool === t}>
                     <Icon className="w-4 h-4" />
                   </button>
                 );
               })}
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <button onClick={() => setShowGrid(!showGrid)} style={btnStyle(showGrid)} title="Toggle grid">
+              <button onClick={() => setShowGrid(!showGrid)} style={btnStyle(showGrid)} title="Show grid" aria-label="Show grid" aria-pressed={showGrid}>
                 <Grid3X3 className="w-4 h-4" />
               </button>
-              <button onClick={() => setOnionSkin(!onionSkin)} style={btnStyle(onionSkin)} title="Onion skin">
+              <button onClick={() => setOnionSkin(!onionSkin)} style={btnStyle(onionSkin)} title="Show previous frame faded" aria-label="Show previous frame faded" aria-pressed={onionSkin}>
                 <Layers className="w-4 h-4" />
               </button>
-              <button onClick={() => setZoom((z) => Math.min(40, z + 2))} style={btnStyle()} title="Zoom in">
+              <button onClick={() => setZoom((z) => Math.min(40, z + 2))} style={btnStyle()} title="Zoom in" aria-label="Zoom in">
                 <ZoomIn className="w-4 h-4" />
               </button>
-              <button onClick={() => setZoom((z) => Math.max(2, z - 2))} style={btnStyle()} title="Zoom out">
+              <button onClick={() => setZoom((z) => Math.max(2, z - 2))} style={btnStyle()} title="Zoom out" aria-label="Zoom out">
                 <ZoomOut className="w-4 h-4" />
               </button>
             </div>
           </div>
 
           {/* Color */}
-          <div style={panelStyle}>
-            <div className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Color</div>
+          <div style={panelStyle} className="max-md:shrink-0 max-md:w-60">
+            <div className="text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Colour</div>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded border" style={{ background: color, borderColor: "var(--border)" }} />
+              <div className="w-8 h-8 shrink-0 rounded border" style={{ background: color, borderColor: "var(--border)" }} />
               <input
                 type="color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                className="w-8 h-8 cursor-pointer"
+                className="w-8 h-8 shrink-0 cursor-pointer"
                 style={{ background: "transparent", border: "none" }}
+                aria-label="Pick any colour"
+                title="Pick any colour"
               />
               <input
                 type="text"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                className="flex-1 text-xs px-2 py-1 rounded outline-none"
+                className="min-w-0 w-full flex-1 text-xs px-2 py-1 rounded outline-none font-mono"
                 style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                aria-label="Colour hex code"
               />
             </div>
+            <div className="flex items-center gap-1 mb-1.5">
+              <select
+                value={paletteSource}
+                onChange={(e) => choosePalette(e.target.value)}
+                className="min-w-0 flex-1 text-xs px-1.5 py-1 rounded outline-none"
+                style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                aria-label="Palette"
+                title="Swap the swatches for one of your project palettes"
+              >
+                <option value="default">Default colours</option>
+                {projectPalettes.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <Link href={`/project/${projectId}/palettes`} className="block text-[11px] mb-2 hover:underline" style={{ color: "var(--text-secondary)" }}>
+              Manage palettes →
+            </Link>
             <div className="flex flex-wrap gap-1">
               {palette.map((c, i) => (
                 <button
@@ -1180,6 +1247,8 @@ export default function PixelArtPage() {
                     borderColor: color === c ? "var(--accent)" : "var(--border)",
                     outline: color === c ? "1px solid var(--accent)" : "none",
                   }}
+                  title={c}
+                  aria-label={`Colour ${c}`}
                 />
               ))}
               <button
@@ -1187,8 +1256,9 @@ export default function PixelArtPage() {
                   if (!palette.includes(color)) setPalette([...palette, color]);
                 }}
                 className="w-5 h-5 rounded-sm flex items-center justify-center"
-                style={{ border: "1px dashed var(--border)", color: "var(--text-muted)" }}
-                title="Add current color to palette"
+                style={{ border: "1px dashed var(--border)", color: "var(--text-secondary)" }}
+                title="Add current colour to the swatches"
+                aria-label="Add current colour to the swatches"
               >
                 <Plus className="w-3 h-3" />
               </button>
@@ -1197,58 +1267,29 @@ export default function PixelArtPage() {
         </div>
 
         {/* Center: canvas */}
-        <div className="flex-1 flex items-center justify-center overflow-auto p-4">
+        <div className="flex-1 flex items-center justify-center overflow-auto p-4 max-md:p-2 min-h-0">
           <canvas
             ref={canvasRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            onPointerDown={handleMouseDown}
+            onPointerMove={handleMouseMove}
+            onPointerUp={handleMouseUp}
+            onPointerCancel={handleMouseUp}
+            onPointerLeave={handleMouseUp}
             onWheel={handleWheel}
             className="pixel-grid"
-            style={{ cursor: tool === "picker" ? "crosshair" : tool === "move" ? "grab" : "crosshair", imageRendering: "pixelated" }}
+            style={{ cursor: tool === "move" ? "grab" : "crosshair", imageRendering: "pixelated", touchAction: "none" }}
           />
         </div>
 
         {/* Right panel: layers */}
-        <div className="w-48 shrink-0 flex flex-col gap-2 p-2 overflow-y-auto border-l" style={{ borderColor: "var(--border)" }}>
-          <div style={panelStyle}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Layers</span>
-              <div className="flex gap-0.5">
-                <button onClick={addLayer} style={{ ...btnStyle(), padding: 3 }} title="Add layer"><Plus className="w-3 h-3" /></button>
-                <button onClick={deleteLayer} style={{ ...btnStyle(), padding: 3 }} title="Delete layer"><Trash2 className="w-3 h-3" /></button>
-              </div>
-            </div>
-            <div className="space-y-0.5">
-              {frames[activeFrame]?.layers.map((layer, i) => (
-                <div
-                  key={layer.id}
-                  onClick={() => setActiveLayer(i)}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer"
-                  style={{
-                    background: activeLayer === i ? "var(--bg-hover)" : "transparent",
-                    color: activeLayer === i ? "var(--text-primary)" : "var(--text-secondary)",
-                  }}
-                >
-                  <button onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(i); }} style={{ color: layer.visible ? "var(--text-secondary)" : "var(--text-muted)" }}>
-                    {layer.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                  </button>
-                  <span className="flex-1 truncate">{layer.name}</span>
-                </div>
-              )).reverse()}
-            </div>
-            <div className="flex gap-0.5 mt-1">
-              <button onClick={moveLayerUp} style={{ ...btnStyle(), padding: 3 }} title="Move up"><ChevronUp className="w-3 h-3" /></button>
-              <button onClick={moveLayerDown} style={{ ...btnStyle(), padding: 3 }} title="Move down"><ChevronDown className="w-3 h-3" /></button>
-            </div>
-          </div>
+        <div className="w-48 shrink-0 flex flex-col gap-2 p-2 overflow-y-auto border-l max-md:hidden" style={{ borderColor: "var(--border)" }}>
+          {layersPanel}
         </div>
       </div>
 
       {/* Bottom: animation timeline */}
       <div
-        className="shrink-0 border-t px-4 pt-2 pb-2.5"
+        className="shrink-0 border-t px-4 pt-2 pb-2.5 max-md:px-3"
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <div className="flex items-center gap-3 mb-1.5 flex-wrap">
@@ -1282,12 +1323,12 @@ export default function PixelArtPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 max-md:flex-wrap max-md:gap-2">
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setPlaying(!playing)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium"
-              style={{ background: playing ? "var(--red)" : "var(--accent)", color: "white" }}
+              style={{ background: playing ? "var(--red)" : "var(--accent)", color: playing ? "#fff" : "var(--on-accent, #fff)" }}
               title={playing ? "Stop the preview" : "Play all frames in a loop"}
             >
               {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -1300,7 +1341,7 @@ export default function PixelArtPage() {
                 min={1}
                 max={30}
                 value={fps}
-                onChange={(e) => setFps(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+                onChange={(e) => { setFps(Math.max(1, Math.min(30, Number(e.target.value) || 1))); setTouched(true); }}
                 className="w-10 text-xs px-1 py-0.5 rounded outline-none text-center"
                 style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
               />
@@ -1308,7 +1349,7 @@ export default function PixelArtPage() {
             </label>
           </div>
 
-          <div className="flex-1 flex items-center gap-1.5 overflow-x-auto py-1">
+          <div className="flex-1 flex items-center gap-1.5 overflow-x-auto py-1 max-md:order-last max-md:basis-full max-md:min-w-0">
             {frames.map((frame, i) => {
               const selected = (playing ? previewFrame : activeFrame) === i;
               return (

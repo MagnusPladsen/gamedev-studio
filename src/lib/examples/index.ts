@@ -7,11 +7,12 @@ import { audioExamples } from "./audio";
 import { levelExamples } from "./levels";
 import { planningExamples } from "./planning";
 import { writingExamples } from "./writing";
+import { boardExamples } from "./board";
 
 export type { ExampleModule, ExampleContext } from "./types";
 export { EXAMPLE_SLUGS } from "./types";
 
-const MODULES: ExampleModule[] = [...artExamples, ...audioExamples, ...levelExamples, ...planningExamples, ...writingExamples];
+const MODULES: ExampleModule[] = [...artExamples, ...audioExamples, ...levelExamples, ...planningExamples, ...writingExamples, ...boardExamples];
 
 export const exampleId = (projectId: string, slug: string) => `${projectId}--ex--${slug}`;
 
@@ -31,6 +32,14 @@ const EXAMPLE_LINKS: [AssetRef["type"], string, AssetRef["type"], string][] = [
   ["note", "design-doc", "diagram", "screen-flow"],
   ["tilemap", "meadow", "palette", "meadow-palette"],
   ["spritesheet", "characters", "sprite", "hero"],
+  ["issue", "i-slime-ai", "diagram", "enemy-ai"],
+  ["issue", "i-meadow-level", "tilemap", "meadow"],
+  ["issue", "i-title-music", "music", "title-theme"],
+  ["issue", "i-coin-sfx", "sound", "coin"],
+  ["issue", "i-jump-bug", "note", "bugs"],
+  ["issue", "i-dialogue-ui", "dialogue", "elder-quest"],
+  ["issue", "i-sword-sprite", "sprite", "sword"],
+  ["issue", "i-jump-feel", "diagram", "player-states"],
 ];
 
 type Item = { id: string; name?: string; title?: string; example?: boolean };
@@ -109,6 +118,7 @@ const COLLECTION_OF: Record<AssetRef["type"], ProjectCollection> = {
   palette: "palettes",
   spritesheet: "spritesheets",
   note: "notes",
+  issue: "issues",
 };
 
 function assetExists(projectId: string, ref: AssetRef) {

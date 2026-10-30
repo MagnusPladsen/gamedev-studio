@@ -3,14 +3,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useHistory } from "@/hooks/useHistory";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
+import { SaveIndicator } from "@/components/SaveIndicator";
+import { ExportMenu } from "@/components/ExportMenu";
+import { ExamplesBar } from "@/components/ExamplesBar";
+import type { SaveState } from "@/hooks/useAutosave";
 import { useParams } from "next/navigation";
 import {
   Plus,
   Trash2,
   Play,
-  Save,
-  Download,
-  ChevronLeft,
   MessageSquare,
   Circle,
   Diamond,
@@ -31,7 +32,7 @@ type NodeType = DialogueNode["type"];
 
 const NODE_COLORS: Record<NodeType, string> = {
   start: "var(--green)",
-  dialogue: "var(--accent)",
+  dialogue: "#a78bfa",
   choice: "var(--yellow, #fbbf24)",
   condition: "var(--pink, #f472b6)",
   action: "var(--blue, #60a5fa)",
@@ -47,66 +48,46 @@ const NODE_LABELS: Record<NodeType, string> = {
   end: "End",
 };
 
-function makeExampleTree(projectId: string): DialogueTree {
-  const startId = uuid();
-  const greetId = uuid();
-  const choiceId = uuid();
-  const friendlyId = uuid();
-  const rudeId = uuid();
-  const endFriendlyId = uuid();
-  const endRudeId = uuid();
+/** Translucent version of a node colour (works with CSS variables too). */
+function tint(color: string, pct: number) {
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+}
 
-  return {
-    id: uuid(),
-    projectId,
-    name: "Example NPC Conversation",
-    nodes: [
-      { id: startId, type: "start", x: 80, y: 200, nextId: greetId },
-      {
-        id: greetId,
-        type: "dialogue",
-        x: 280,
-        y: 180,
-        speaker: "Merchant",
-        text: "Welcome, traveler! Looking for supplies?",
-        nextId: choiceId,
-      },
-      {
-        id: choiceId,
-        type: "choice",
-        x: 560,
-        y: 160,
-        text: "Player responds:",
-        choices: [
-          { text: "Yes, show me what you have!", targetId: friendlyId },
-          { text: "No, get out of my way.", targetId: rudeId },
-        ],
-      },
-      {
-        id: friendlyId,
-        type: "dialogue",
-        x: 840,
-        y: 80,
-        speaker: "Merchant",
-        text: "Wonderful! Take a look at my finest wares.",
-        nextId: endFriendlyId,
-      },
-      {
-        id: rudeId,
-        type: "dialogue",
-        x: 840,
-        y: 300,
-        speaker: "Merchant",
-        text: "Hmph! Fine, but you'll regret it when you need potions!",
-        nextId: endRudeId,
-      },
-      { id: endFriendlyId, type: "end", x: 1100, y: 80 },
-      { id: endRudeId, type: "end", x: 1100, y: 300 },
-    ],
-    tags: ["example"],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+function isTyping(el: EventTarget | null) {
+  return el instanceof HTMLElement && (el.isContentEditable || !!el.closest("input, textarea, select"));
+}
+
+function downloadText(name: string, text: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Converts a tree to Yarn Spinner script: one Yarn node per tree node, choices as -> options. */
+function toYarn(tree: DialogueTree): string {
+  const titles = new Map<string, string>();
+  tree.nodes.forEach((n, i) => {
+    titles.set(n.id, n.type === "start" ? "Start" : `${NODE_LABELS[n.type]}_${i}`.replace(/[^A-Za-z0-9_]/g, "_"));
+  });
+  const jump = (id?: string) => (id && titles.has(id) ? `<<jump ${titles.get(id)}>>` : "<<stop>>");
+  const cond = (c: string) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(c) ? `$${c}` : c);
+  const blocks = tree.nodes.map((n) => {
+    const body: string[] = [];
+    if (n.type === "start") body.push(jump(n.nextId));
+    else if (n.type === "end") body.push("<<stop>>");
+    else if (n.type === "dialogue") body.push(`${n.speaker ? `${n.speaker}: ` : ""}${n.text ?? ""}`, jump(n.nextId));
+    else if (n.type === "choice") {
+      if (n.text) body.push(n.text);
+      for (const c of n.choices ?? []) body.push(`-> ${c.text}`, `    ${jump(c.targetId)}`);
+    } else if (n.type === "condition") {
+      body.push(`<<if ${cond(n.condition || n.text || "true")}>>`, `    ${jump(n.nextId)}`, "<<endif>>", "<<stop>>");
+    } else if (n.type === "action") body.push(`<<${n.text || "action"}>>`, jump(n.nextId));
+    return `title: ${titles.get(n.id)}\n---\n${body.join("\n")}\n===`;
+  });
+  return `// ${tree.name}, exported from GameDev Studio\n${blocks.join("\n\n")}\n`;
 }
 
 function getNodeWidth(node: DialogueNode): number {
@@ -183,8 +164,7 @@ export default function DialoguePage() {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState(false);
-  const [savedFlash, setSavedFlash] = useState(false);
-  const flashTimer = useRef<number | null>(null);
+  const lastTap = useRef({ id: "", at: 0 });
   const [characters, setCharacters] = useState<string[]>([]);
 
   useEffect(() => {
@@ -214,12 +194,11 @@ export default function DialoguePage() {
       storage.save("dialogues", updated, projectId);
       setActiveTree(updated);
       setTrees(storage.getAll("dialogues", projectId));
-      setSavedFlash(true);
-      if (flashTimer.current) window.clearTimeout(flashTimer.current);
-      flashTimer.current = window.setTimeout(() => setSavedFlash(false), 1500);
     },
     [projectId]
   );
+  // Every edit is written straight away; only a node drag waits for release.
+  const saveState: SaveState = draggingNode ? "unsaved" : "saved";
 
   // Undo history tracks content only; a node drag counts once, when released.
   const content = useMemo(
@@ -249,13 +228,6 @@ export default function DialoguePage() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    storage.save("dialogues", tree, projectId);
-    setTrees(storage.getAll("dialogues", projectId));
-    setActiveTree(tree);
-  }
-
-  function loadExample() {
-    const tree = makeExampleTree(projectId);
     storage.save("dialogues", tree, projectId);
     setTrees(storage.getAll("dialogues", projectId));
     setActiveTree(tree);
@@ -406,16 +378,38 @@ export default function DialoguePage() {
 
   function exportTree() {
     if (!activeTree) return;
-    const blob = new Blob([JSON.stringify(activeTree, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${activeTree.name}.dialogue.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadText(`${activeTree.name}.dialogue.json`, JSON.stringify(activeTree, null, 2), "application/json");
   }
+
+  function exportYarn() {
+    if (!activeTree) return;
+    downloadText(`${activeTree.name.replace(/[^\w\- ]+/g, "")}.yarn`, toYarn(activeTree), "text/plain");
+  }
+
+  // Delete/Backspace removes the selected node; Ctrl/⌘+S saves (edits already save, so this is a no-op safety).
+  const keyRef = useRef({ selectedNode, activeTree, deleteNode, saveTree });
+  useEffect(() => {
+    keyRef.current = { selectedNode, activeTree, deleteNode, saveTree };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = keyRef.current;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (k.activeTree) k.saveTree(k.activeTree);
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && !isTyping(e.target) && k.selectedNode && k.activeTree) {
+        const node = k.activeTree.nodes.find((n) => n.id === k.selectedNode);
+        if (node && node.type !== "start") {
+          e.preventDefault();
+          k.deleteNode(node.id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function startPreview() {
     if (!activeTree) return;
@@ -523,7 +517,7 @@ export default function DialoguePage() {
             width: w,
             height: h,
             borderRadius: "50%",
-            background: `${color}25`,
+            background: tint(color, 15),
             border: `2px solid ${borderCol}`,
             display: "flex",
             alignItems: "center",
@@ -544,7 +538,7 @@ export default function DialoguePage() {
           style={{
             width: w,
             height: h,
-            background: `${color}15`,
+            background: tint(color, 9),
             border: `2px solid ${borderCol}`,
             borderRadius: 8,
             transform: "rotate(0deg)",
@@ -579,7 +573,7 @@ export default function DialoguePage() {
         style={{
           width: w,
           minHeight: h,
-          background: `${color}10`,
+          background: tint(color, 6),
           border: `2px solid ${borderCol}`,
           borderRadius: 10,
           padding: "8px 10px",
@@ -654,7 +648,7 @@ export default function DialoguePage() {
                     flexShrink: 0,
                     marginLeft: 4,
                   }}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     e.stopPropagation();
                     setConnecting({
                       fromId: node.id,
@@ -702,7 +696,7 @@ export default function DialoguePage() {
   if (!activeTree) {
     return (
       <div className="p-6 md:p-10 max-w-3xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <h1
               className="text-2xl font-bold"
@@ -717,29 +711,16 @@ export default function DialoguePage() {
               Create branching conversations for NPCs
             </p>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={loadExample}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm"
-              style={{
-                background: "var(--bg-card)",
-                color: "var(--text-secondary)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <Play className="w-4 h-4" />
-              Load Example
-            </button>
-            <button
-              onClick={createTree}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
-              style={{ background: "var(--accent)", color: "white" }}
-            >
-              <Plus className="w-4 h-4" />
-              New Dialogue
-            </button>
-          </div>
+          <button
+            onClick={createTree}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium shrink-0"
+            style={{ background: "var(--accent)", color: "white" }}
+          >
+            <Plus className="w-4 h-4" />
+            New Dialogue
+          </button>
         </div>
+        <ExamplesBar projectId={projectId} collections={["dialogues"]} className="mb-8" />
 
         {trees.length === 0 ? (
           <div
@@ -760,8 +741,15 @@ export default function DialoguePage() {
               className="text-sm mb-4"
               style={{ color: "var(--text-secondary)" }}
             >
-              Create a dialogue tree or load the example
+              Create a dialogue tree, or add the examples above to see how one works.
             </p>
+            <button
+              onClick={createTree}
+              className="px-4 py-2 rounded-lg text-sm font-medium"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              New Dialogue
+            </button>
           </div>
         ) : (
           <div className="grid gap-3">
@@ -801,10 +789,12 @@ export default function DialoguePage() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteTree(t.id);
+                    if (confirm(`Delete "${t.name}"?`)) deleteTree(t.id);
                   }}
-                  className="p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="p-2 rounded-lg md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                   style={{ color: "var(--red)" }}
+                  title="Delete dialogue"
+                  aria-label={`Delete ${t.name}`}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -822,16 +812,16 @@ export default function DialoguePage() {
     : null;
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div
-        className="flex items-center justify-between px-4 h-12 border-b shrink-0"
+        className="flex items-center justify-between px-4 h-12 border-b shrink-0 max-md:h-auto max-md:flex-wrap max-md:gap-y-1.5 max-md:py-1.5 max-md:px-2"
         style={{
           background: "var(--bg-secondary)",
           borderColor: "var(--border)",
         }}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => {
               setActiveTree(null);
@@ -839,46 +829,45 @@ export default function DialoguePage() {
               setEditingNode(null);
               setPreview(null);
             }}
-            className="p-1.5 rounded-lg"
-            style={{ color: "var(--text-secondary)" }}
+            className="px-2 py-1 rounded text-xs whitespace-nowrap"
+            style={{ color: "var(--text-primary)" }}
           >
-            <ChevronLeft className="w-4 h-4" />
+            ← All dialogues
           </button>
           <UndoRedoButtons history={history} />
           <input
-            className="bg-transparent text-sm font-medium outline-none w-48"
+            className="bg-transparent text-sm font-medium outline-none w-48 max-md:w-36 min-w-0"
             style={{ color: "var(--text-primary)" }}
             value={activeTree.name}
             onChange={(e) =>
               saveTree({ ...activeTree, name: e.target.value })
             }
+            aria-label="Dialogue name"
           />
-          <span
-            className="text-xs transition-opacity"
-            style={{ color: "var(--green)", opacity: savedFlash ? 1 : 0 }}
-          >
-            Saved
-          </span>
           <div className="hidden lg:block">
             <LinkedAssets projectId={projectId} type="dialogue" id={activeTree.id} layout="row" />
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 max-md:order-last max-md:w-full max-md:overflow-x-auto">
+          <span className="text-xs mr-1 whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>
+            Add node:
+          </span>
           {(
             ["start", "dialogue", "choice", "condition", "action", "end"] as NodeType[]
           ).map((type) => (
             <button
               key={type}
               onClick={() => addNode(type)}
-              className="px-2 py-1 rounded text-xs font-medium"
+              className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap"
               style={{
-                background: `${NODE_COLORS[type]}20`,
+                background: tint(NODE_COLORS[type], 14),
                 color: NODE_COLORS[type],
-                border: `1px solid ${NODE_COLORS[type]}40`,
+                border: `1px solid ${tint(NODE_COLORS[type], 45)}`,
               }}
-              title={`Add ${NODE_LABELS[type]} node`}
+              title={`Add a ${NODE_LABELS[type]} node`}
             >
+              <Plus className="w-3 h-3" />
               {NODE_LABELS[type]}
             </button>
           ))}
@@ -890,6 +879,7 @@ export default function DialoguePage() {
             className="p-1.5 rounded-lg"
             style={{ color: "var(--text-secondary)" }}
             title="Zoom in"
+            aria-label="Zoom in"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
@@ -898,6 +888,7 @@ export default function DialoguePage() {
             className="p-1.5 rounded-lg"
             style={{ color: "var(--text-secondary)" }}
             title="Zoom out"
+            aria-label="Zoom out"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
@@ -909,6 +900,7 @@ export default function DialoguePage() {
             className="p-1.5 rounded-lg"
             style={{ color: "var(--text-secondary)" }}
             title="Reset view"
+            aria-label="Reset view"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
@@ -923,19 +915,18 @@ export default function DialoguePage() {
               background: "var(--green)",
               color: "black",
             }}
-            title="Preview dialogue"
+            title="Play through the conversation"
           >
             <Play className="w-3 h-3" />
             Preview
           </button>
-          <button
-            onClick={exportTree}
-            className="p-1.5 rounded-lg"
-            style={{ color: "var(--text-secondary)" }}
-            title="Export JSON"
-          >
-            <Download className="w-4 h-4" />
-          </button>
+          <SaveIndicator state={saveState} className="px-1" />
+          <ExportMenu
+            items={[
+              { label: "JSON", description: "The whole tree, to re-import or load in code", onClick: exportTree },
+              { label: "Yarn Spinner (.yarn)", description: "Script for Unity, Godot and GameMaker via Yarn Spinner", onClick: exportYarn },
+            ]}
+          />
         </div>
       </div>
 
@@ -944,10 +935,12 @@ export default function DialoguePage() {
         <div
           ref={canvasRef}
           className="absolute inset-0 cursor-grab active:cursor-grabbing"
-          onMouseDown={handleCanvasMouseDown}
-          onMouseMove={handleCanvasMouseMove}
-          onMouseUp={handleCanvasMouseUp}
-          onMouseLeave={() => {
+          style={{ touchAction: "none" }}
+          onPointerDown={handleCanvasMouseDown}
+          onPointerMove={handleCanvasMouseMove}
+          onPointerUp={handleCanvasMouseUp}
+          onPointerCancel={handleCanvasMouseUp}
+          onPointerLeave={() => {
             setIsPanning(false);
             setDraggingNode(null);
             setConnecting(null);
@@ -988,7 +981,7 @@ export default function DialoguePage() {
                   cursor: "move",
                   userSelect: "none",
                 }}
-                onMouseDown={(e) => {
+                onPointerDown={(e) => {
                   if (
                     (e.target as HTMLElement).classList.contains(
                       "output-handle"
@@ -996,6 +989,16 @@ export default function DialoguePage() {
                   )
                     return;
                   e.stopPropagation();
+                  // touch has no double-click: a second quick tap opens the editor
+                  if (e.pointerType === "touch") {
+                    const now = Date.now();
+                    if (lastTap.current.id === node.id && now - lastTap.current.at < 320) {
+                      setEditingNode(node.id);
+                      lastTap.current = { id: "", at: 0 };
+                      return;
+                    }
+                    lastTap.current = { id: node.id, at: now };
+                  }
                   setSelectedNode(node.id);
                   setDraggingNode(node.id);
                   const pt = clientToCanvas(e.clientX, e.clientY);
@@ -1042,7 +1045,7 @@ export default function DialoguePage() {
                       background: NODE_COLORS[node.type],
                       cursor: "crosshair",
                     }}
-                    onMouseDown={(e) => {
+                    onPointerDown={(e) => {
                       e.stopPropagation();
                       setConnecting({
                         fromId: node.id,
@@ -1072,10 +1075,13 @@ export default function DialoguePage() {
                       cursor: "pointer",
                       fontSize: 10,
                     }}
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteNode(node.id);
                     }}
+                    title="Delete node (Delete key)"
+                    aria-label="Delete node"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1224,7 +1230,7 @@ function EditPanel({
 }) {
   return (
     <div
-      className="absolute top-2 right-2 w-72 rounded-xl border p-4 overflow-y-auto max-h-[80vh]"
+      className="absolute top-2 right-2 w-72 rounded-xl border p-4 overflow-y-auto max-h-[80vh] max-md:left-2 max-md:w-auto max-md:max-h-[60vh]"
       style={{
         background: "var(--bg-card)",
         borderColor: "var(--border)",
@@ -1238,7 +1244,7 @@ function EditPanel({
         >
           Edit {NODE_LABELS[node.type]}
         </span>
-        <button onClick={onClose} style={{ color: "var(--text-secondary)" }}>
+        <button onClick={onClose} style={{ color: "var(--text-secondary)" }} title="Close" aria-label="Close editor">
           <X className="w-4 h-4" />
         </button>
       </div>

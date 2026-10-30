@@ -11,6 +11,8 @@ import type {
   SpriteSheet,
   AssetRelation,
   Note,
+  Board,
+  Issue,
 } from "@/types";
 
 export type StorableTypes = {
@@ -26,6 +28,8 @@ export type StorableTypes = {
   spritesheets: SpriteSheet;
   links: AssetRelation;
   notes: Note;
+  boards: Board;
+  issues: Issue;
 };
 
 export type CollectionName = keyof StorableTypes;
@@ -42,6 +46,8 @@ export const PROJECT_COLLECTIONS: ProjectCollection[] = [
   "palettes",
   "spritesheets",
   "notes",
+  "boards",
+  "issues",
   "links",
 ];
 

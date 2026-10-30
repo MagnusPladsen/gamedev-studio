@@ -202,7 +202,64 @@ export interface SpriteSheet {
   createdAt: string;
 }
 
-export type AssetType = "sprite" | "sound" | "music" | "diagram" | "story" | "tilemap" | "dialogue" | "palette" | "spritesheet" | "note";
+export type AssetType = "sprite" | "sound" | "music" | "diagram" | "story" | "tilemap" | "dialogue" | "palette" | "spritesheet" | "note" | "issue";
+
+/** "todo" / "doing" / "done" decides what counts as finished, whatever the column is called. */
+export type ColumnCategory = "todo" | "doing" | "done";
+
+export interface BoardColumn {
+  id: string;
+  name: string;
+  color: string;
+  category: ColumnCategory;
+}
+
+export interface Sprint {
+  id: string;
+  name: string;
+  goal?: string;
+  startDate?: string;
+  endDate?: string;
+  state: "planned" | "active" | "closed";
+  closedAt?: string;
+}
+
+/** One task board per project: its columns and sprints. Issues are stored separately. */
+export interface Board {
+  id: string;
+  projectId: string;
+  name: string;
+  keyPrefix: string; // e.g. "PIP" → issues PIP-1, PIP-2…
+  nextNumber: number;
+  columns: BoardColumn[];
+  sprints: Sprint[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type IssueType = "feature" | "bug" | "task" | "art" | "audio" | "design" | "writing";
+export type IssuePriority = "lowest" | "low" | "medium" | "high" | "highest";
+
+export interface Issue {
+  id: string;
+  projectId: string;
+  key: string; // "PIP-12"
+  title: string;
+  description: string; // markdown
+  type: IssueType;
+  priority: IssuePriority;
+  status: string; // BoardColumn.id
+  sprintId: string | null; // null = backlog
+  points?: number;
+  dueDate?: string;
+  labels: string[];
+  order: number;
+  resolvedAt?: string; // set while in a "done" column
+  archived?: boolean; // finished and off the board, still searchable and linkable
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Note {
   id: string;

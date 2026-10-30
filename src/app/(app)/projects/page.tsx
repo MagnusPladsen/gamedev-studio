@@ -1,25 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, FolderOpen, Download, Upload } from "lucide-react";
+import { Plus, Trash2, FolderOpen, Download, Upload, Loader2 } from "lucide-react";
 import { storage } from "@/lib/storage";
 import type { Project } from "@/types";
 import { v4 as uuid } from "uuid";
+import { addExamples } from "@/lib/examples";
+import { useStorageVersion } from "@/hooks/useStorage";
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const version = useStorageVersion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const projects = useMemo<Project[]>(() => storage.getAll("projects"), [version]);
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [withExamples, setWithExamples] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setProjects(storage.getAll("projects"));
-  }, []);
-
-  function createProject() {
-    if (!name.trim()) return;
+  async function createProject() {
+    if (!name.trim() || creating) return;
     const project: Project = {
       id: uuid(),
       name: name.trim(),
@@ -28,7 +31,16 @@ export default function ProjectsPage() {
       updatedAt: new Date().toISOString(),
     };
     storage.save("projects", project);
-    setProjects(storage.getAll("projects"));
+    if (withExamples) {
+      setCreating(true);
+      try {
+        await addExamples(project.id);
+      } catch (err) {
+        console.error("Could not add example assets", err);
+      } finally {
+        setCreating(false);
+      }
+    }
     setName("");
     setDescription("");
     setShowNew(false);
@@ -38,7 +50,6 @@ export default function ProjectsPage() {
   function deleteProject(id: string) {
     if (!confirm("Delete this project and everything in it? This cannot be undone.")) return;
     storage.delete("projects", id);
-    setProjects(storage.getAll("projects"));
   }
 
   function exportProject(id: string) {
@@ -64,7 +75,9 @@ export default function ProjectsPage() {
       reader.onload = () => {
         const result = storage.importProject(reader.result as string);
         if (result) {
-          setProjects(storage.getAll("projects"));
+          setImportError(null);
+        } else {
+          setImportError(`"${file.name}" isn't a GameDev Studio project file. Use a .gamedev.json file made with Export.`);
         }
       };
       reader.readAsText(file);
@@ -73,8 +86,8 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6 max-md:p-4 md:p-10 max-w-4xl mx-auto">
+      <div className="flex items-center justify-between gap-4 mb-8 max-md:flex-col max-md:items-stretch max-md:mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
             Projects
@@ -86,11 +99,12 @@ export default function ProjectsPage() {
             GameDev Studio is in beta. Export your projects now and then as a backup.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-md:[&>button]:flex-1 max-md:[&>button]:justify-center">
           <button
             onClick={importProject}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
-            style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+            style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border-hover)" }}
+            title="Open a project file you exported earlier (.gamedev.json)"
           >
             <Upload className="w-4 h-4" />
             Import
@@ -105,6 +119,12 @@ export default function ProjectsPage() {
           </button>
         </div>
       </div>
+
+      {importError && (
+        <p className="mb-4 text-sm px-3 py-2 rounded-lg" role="alert" style={{ color: "var(--red)", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.3)" }}>
+          {importError}
+        </p>
+      )}
 
       {showNew && (
         <div
@@ -141,18 +161,34 @@ export default function ProjectsPage() {
             }}
             onKeyDown={(e) => e.key === "Enter" && createProject()}
           />
+          <label className="flex items-start gap-2.5 mb-4 text-sm cursor-pointer select-none" style={{ color: "var(--text-primary)" }}>
+            <input
+              type="checkbox"
+              checked={withExamples}
+              onChange={(e) => setWithExamples(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[var(--accent)]"
+            />
+            <span>
+              Start with example assets
+              <span className="block text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                A small sample game (Pip&apos;s Quest) across every tool. Remove it any time.
+              </span>
+            </span>
+          </label>
           <div className="flex gap-2">
             <button
               onClick={createProject}
-              className="px-4 py-1.5 rounded-lg text-sm font-medium"
+              disabled={creating || !name.trim()}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50"
               style={{ background: "var(--accent)", color: "white" }}
             >
+              {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Create
             </button>
             <button
               onClick={() => setShowNew(false)}
               className="px-4 py-1.5 rounded-lg text-sm"
-              style={{ color: "var(--text-secondary)" }}
+              style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }}
             >
               Cancel
             </button>
@@ -198,8 +234,8 @@ export default function ProjectsPage() {
                 e.currentTarget.style.background = "var(--bg-card)";
               }}
             >
-              <div>
-                <h3 className="font-medium" style={{ color: "var(--text-primary)" }}>
+              <div className="min-w-0">
+                <h3 className="font-medium truncate" style={{ color: "var(--text-primary)" }}>
                   {project.name}
                 </h3>
                 {project.description && (
@@ -211,7 +247,7 @@ export default function ProjectsPage() {
                   Created {new Date(project.createdAt).toLocaleDateString()}
                 </p>
               </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100 transition-opacity shrink-0">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -220,6 +256,7 @@ export default function ProjectsPage() {
                   className="p-2 rounded-lg transition-colors"
                   style={{ color: "var(--text-secondary)" }}
                   title="Export project"
+                  aria-label={`Export ${project.name}`}
                 >
                   <Download className="w-4 h-4" />
                 </button>
@@ -231,6 +268,7 @@ export default function ProjectsPage() {
                   className="p-2 rounded-lg transition-colors"
                   style={{ color: "var(--red)" }}
                   title="Delete project"
+                  aria-label={`Delete ${project.name}`}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

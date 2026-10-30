@@ -16,6 +16,7 @@ import {
   Download,
   Globe,
   NotebookPen,
+  SquareKanban,
 } from "lucide-react";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -52,6 +53,7 @@ const tools = [
   { icon: MessageSquare, name: "Dialogue Trees", description: "Visual branching dialogue editor for RPGs and adventure games. Connect speakers and choices." },
   { icon: Palette, name: "Color Palettes", description: "Manage and share color palettes across all your tools. Built-in game-ready palette presets." },
   { icon: Package, name: "Sprite Sheet Packer", description: "Combine multiple sprites into optimized sprite sheets ready for any game engine." },
+  { icon: SquareKanban, name: "Task Board", description: "Plan sprints like Jira: To Do, In Progress, Testing, Done. Issues link to the assets they're about." },
   { icon: NotebookPen, name: "Notebook", description: "Ideas, to-do lists, design docs and bug lists, with checklists and links to any asset." },
 ];
 

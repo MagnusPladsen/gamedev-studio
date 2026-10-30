@@ -18,7 +18,6 @@ import {
   ListChecks,
   ChevronLeft,
   Check,
-  Loader2,
   ChevronDown,
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
@@ -29,6 +28,8 @@ import { useHistory } from "@/hooks/useHistory";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import type { Note } from "@/types";
+import { SaveIndicator } from "@/components/SaveIndicator";
+import { ExamplesBar } from "@/components/ExamplesBar";
 
 const ACCENT = "#a3e635";
 const SAVE_DELAY = 600;
@@ -65,12 +66,6 @@ const TEMPLATES: { key: string; label: string; title: string; content: string }[
       "**Date:** \n**Tester:** \n**Build:** \n\n## What worked\n- \n\n## What was confusing\n- \n\n## Ideas to try\n- [ ] \n",
   },
 ];
-
-const WELCOME = {
-  title: "Welcome to your notebook",
-  content:
-    "Use the notebook for ideas, to-dos and design notes while you build your game.\n\n- [x] Open the notebook\n- [ ] Write down your game idea\n- [ ] Link this note to a sprite or sound with **+ Link** below\n\nType `[[` to link to another note or a story entry.\n",
-};
 
 // ─── helpers ─────────────────────────────────────────────────────────
 
@@ -460,29 +455,20 @@ export default function NotebookPage() {
   // save pending changes when leaving the page
   useEffect(() => () => flush(), [flush]);
 
+  // Ctrl/⌘+S saves straight away
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        flush();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flush]);
+
   // ── history (undo/redo) ──
   const history = useHistory<Note | null>(draft, (v) => setDraft(v), draft?.id);
-
-  // ── seeding ──
-  useEffect(() => {
-    const flag = `gds-seeded-notes:${projectId}`;
-    let seeded = false;
-    try {
-      seeded = localStorage.getItem(flag) === "1";
-    } catch {}
-    if (seeded) return;
-    if (storage.getAll("notes", projectId).length === 0) {
-      const now = new Date().toISOString();
-      storage.save(
-        "notes",
-        { id: uuid(), projectId, title: WELCOME.title, content: WELCOME.content, folder: "", pinned: true, tags: ["getting-started"], createdAt: now, updatedAt: now },
-        projectId
-      );
-    }
-    try {
-      localStorage.setItem(flag, "1");
-    } catch {}
-  }, [projectId]);
 
   // ── selection ──
   const select = useCallback(
@@ -691,7 +677,7 @@ export default function NotebookPage() {
         className={`${draft ? "hidden md:flex" : "flex"} w-full md:w-72 shrink-0 flex-col border-r`}
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
-        <div className="p-3 pl-14 md:pl-3 border-b space-y-2" style={{ borderColor: "var(--border)" }}>
+        <div className="p-3 border-b space-y-2" style={{ borderColor: "var(--border)" }}>
           <div className="flex items-center gap-2">
             <NotebookPen className="w-4 h-4" style={{ color: ACCENT }} />
             <span className="text-sm font-semibold flex-1" style={{ color: "var(--text-primary)" }}>
@@ -813,6 +799,9 @@ export default function NotebookPage() {
             ))
           )}
         </div>
+        <div className="px-3 py-2.5 border-t" style={{ borderColor: "var(--border)" }}>
+          <ExamplesBar projectId={projectId} collections={["notes"]} />
+        </div>
       </aside>
 
       {/* Editor */}
@@ -845,7 +834,7 @@ export default function NotebookPage() {
         ) : (
           <>
             {/* Header */}
-            <div className="shrink-0 border-b px-4 py-2.5 pl-14 md:pl-4 space-y-2" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
+            <div className="shrink-0 border-b px-4 py-2.5 space-y-2" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
               <div className="flex items-center gap-2">
                 <button onClick={() => select(null)} className="md:hidden p-1 -ml-1 rounded" style={{ color: "var(--text-secondary)" }} aria-label="Back to notes">
                   <ChevronLeft className="w-4 h-4" />
@@ -857,17 +846,7 @@ export default function NotebookPage() {
                   className="flex-1 min-w-0 bg-transparent text-base font-semibold outline-none"
                   style={{ color: "var(--text-primary)" }}
                 />
-                <span className="hidden sm:flex items-center gap-1 text-xs shrink-0" style={{ color: "var(--text-muted)" }}>
-                  {saveState === "saving" ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" /> Saving…
-                    </>
-                  ) : saveState === "saved" ? (
-                    <>
-                      <Check className="w-3 h-3" style={{ color: ACCENT }} /> Saved
-                    </>
-                  ) : null}
-                </span>
+                <SaveIndicator state={saveState === "saving" ? "saving" : "saved"} className="hidden sm:inline-flex shrink-0" />
                 <UndoRedoButtons history={history} />
                 <button
                   onClick={() => update({ pinned: !draft.pinned })}
