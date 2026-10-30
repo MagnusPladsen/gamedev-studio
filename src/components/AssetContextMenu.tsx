@@ -34,7 +34,7 @@ import {
   type AssetMenuEntry,
 } from "@/lib/asset-menu-items";
 import { assetHref } from "@/lib/assets";
-import { decideEditorRefresh, willOpenParamChange } from "@/lib/editor-refresh";
+import { decideEditorRefresh, editorListFollowsStorage, willOpenParamChange } from "@/lib/editor-refresh";
 import { flushAllAutosaves } from "@/lib/autosave-registry";
 import { downloadBlob } from "@/lib/download";
 import { addLink, getRelated } from "@/lib/links";
@@ -212,7 +212,9 @@ function refreshEditor(services: MenuServices, outcome: MutationOutcome): void {
   const { pathname, projectId, openId } = services;
   if (!outcome || !needsEditorReload(pathname, projectId, outcome.ref.type)) return;
   const deleted = outcome.kind === "deleted" ? outcome.ref : null;
-  const decision = decideEditorRefresh(outcome, openId, openAssetOnScreen(pathname, projectId, deleted));
+  const tracked = openAssetOnScreen(pathname, projectId, deleted);
+  const decision = decideEditorRefresh(outcome, openId, tracked, editorListFollowsStorage(outcome.ref.type));
+  if (decision.kind === "none") return;
   if (decision.kind === "reload") return services.reloadView();
   const { href, open } = refreshTarget(services, outcome, decision.open);
   services.navigateThenReload(href, open);
