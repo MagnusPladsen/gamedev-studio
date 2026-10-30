@@ -101,7 +101,10 @@ function UnsupportedNotice(): React.JSX.Element {
 
 export default function VoxelsPage(): React.JSX.Element {
   const projectId = useParams().projectId as string;
-  const paletteParam = useSearchParams().get("palette");
+  const searchParams = useSearchParams();
+  const paletteParam = searchParams.get("palette");
+  const fromSpriteParam = searchParams.get("fromSprite");
+  const handledFromSprite = useRef<string | null>(null);
   const version = useStorageVersion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const models = useMemo(() => storage.getAll("models", projectId), [projectId, version]);
@@ -120,6 +123,7 @@ export default function VoxelsPage(): React.JSX.Element {
   const [view, setView] = useState<{ preset: ViewPreset; nonce: number }>({ preset: "reset", nonce: 0 });
   const [isUnsupported, setIsUnsupported] = useState(false);
   const [isSpriteDialogOpen, setIsSpriteDialogOpen] = useState(false);
+  const [autoConvertSpriteId, setAutoConvertSpriteId] = useState<string | null>(null);
   const [isModelsPanelOpen, setIsModelsPanelOpen] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const viewportApiRef = useRef<VoxelViewportApi | null>(null);
@@ -180,8 +184,20 @@ export default function VoxelsPage(): React.JSX.Element {
     });
   }
 
-  function createFromSprite({ sprite, grid: spriteGrid, colors: spriteColors }: SpriteVoxels): void {
+  useEffect(() => {
+    if (!fromSpriteParam || handledFromSprite.current === fromSpriteParam) return;
+    handledFromSprite.current = fromSpriteParam;
+    setAutoConvertSpriteId(fromSpriteParam);
+    setIsSpriteDialogOpen(true);
+  }, [fromSpriteParam]);
+
+  function closeSpriteDialog(): void {
     setIsSpriteDialogOpen(false);
+    setAutoConvertSpriteId(null);
+  }
+
+  function createFromSprite({ sprite, grid: spriteGrid, colors: spriteColors }: SpriteVoxels): void {
+    closeSpriteDialog();
     const model = startModel({ name: `${sprite.name} 3D`, grid: spriteGrid, colors: spriteColors });
     addLink(projectId, { type: "model", id: model.id }, { type: "sprite", id: sprite.id });
   }
@@ -345,7 +361,13 @@ export default function VoxelsPage(): React.JSX.Element {
       </div>
 
       {isSpriteDialogOpen && (
-        <SpriteImportDialog projectId={projectId} sprites={sprites} onCreate={createFromSprite} onClose={() => setIsSpriteDialogOpen(false)} />
+        <SpriteImportDialog
+          projectId={projectId}
+          sprites={sprites}
+          autoConvertSpriteId={autoConvertSpriteId ?? undefined}
+          onCreate={createFromSprite}
+          onClose={closeSpriteDialog}
+        />
       )}
     </div>
   );

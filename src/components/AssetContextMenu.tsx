@@ -358,6 +358,8 @@ const ACTION_HANDLERS: Record<AssetActionId, ActionHandler> = {
   "open-new-tab": ({ services, context }) =>
     void window.open(assetHref(services.projectId, context.ref.type, context.ref.id), "_blank", "noopener"),
   "export-png": exportPng,
+  "use-in-tilemap": pushTo(({ services, context }) => `/project/${services.projectId}/tilemap?tile=${encodeURIComponent(context.ref.id)}`),
+  "make-3d-model": pushTo(({ services, context }) => `/project/${services.projectId}/voxels?fromSprite=${encodeURIComponent(context.ref.id)}`),
   "use-in-pixel-art": pushTo(({ services, context }) => `/project/${services.projectId}/pixel-art?palette=${encodeURIComponent(context.ref.id)}`),
   "use-in-voxels": pushTo(({ services, context }) => `/project/${services.projectId}/voxels?palette=${encodeURIComponent(context.ref.id)}`),
   "toggle-note-pin": toggleNotePin,

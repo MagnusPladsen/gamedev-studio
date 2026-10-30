@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, X } from "lucide-react";
 import { loadImage, spriteFrameSrc } from "@/lib/pixels";
@@ -17,6 +17,7 @@ export interface SpriteVoxels {
 interface Props {
   projectId: string;
   sprites: Sprite[];
+  autoConvertSpriteId?: string;
   onCreate(result: SpriteVoxels): void;
   onClose(): void;
 }
@@ -60,7 +61,7 @@ function SpriteButton({ sprite, isBusy, onPick }: { sprite: Sprite; isBusy: bool
 }
 
 /** Pick a sprite; its first frame becomes a new one-voxel-deep model standing upright. */
-export function SpriteImportDialog({ projectId, sprites, onCreate, onClose }: Props): React.JSX.Element {
+export function SpriteImportDialog({ projectId, sprites, autoConvertSpriteId, onCreate, onClose }: Props): React.JSX.Element {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -86,6 +87,19 @@ export function SpriteImportDialog({ projectId, sprites, onCreate, onClose }: Pr
       setBusyId(null);
     }
   }
+
+  const convertRef = useRef(convert);
+  useEffect(() => {
+    convertRef.current = convert;
+  });
+  const autoConverted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoConvertSpriteId || autoConverted.current === autoConvertSpriteId) return;
+    const sprite = sprites.find((candidate) => candidate.id === autoConvertSpriteId);
+    if (!sprite) return;
+    autoConverted.current = autoConvertSpriteId;
+    void convertRef.current(sprite);
+  }, [autoConvertSpriteId, sprites]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Make a model from a sprite">

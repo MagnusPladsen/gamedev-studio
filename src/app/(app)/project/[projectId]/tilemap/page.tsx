@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   Plus,
@@ -167,6 +167,14 @@ export default function TilemapPage() {
     const tm = storage.getById("tilemaps", id, projectId);
     if (tm) selectTilemap(tm);
   });
+  const tileParam = useSearchParams().get("tile");
+  const handledTileParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tileParam || handledTileParam.current === tileParam) return;
+    handledTileParam.current = tileParam;
+    setSelectedTile(tileParam);
+    setTool("paint");
+  }, [tileParam]);
   useTrackOpenAsset(current?.id ? { type: "tilemap", id: current?.id } : null);
 
   const requestRedraw = useCallback(() => setRedrawTick((t) => t + 1), []);
