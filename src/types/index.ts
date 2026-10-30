@@ -1,8 +1,14 @@
+export interface ProjectPins {
+  tools: string[]; // tool paths, in pin order
+  assets: AssetRef[];
+}
+
 export interface Project {
   id: string;
   name: string;
   description: string;
   thumbnail?: string;
+  pins?: ProjectPins;
   createdAt: string;
   updatedAt: string;
 }
