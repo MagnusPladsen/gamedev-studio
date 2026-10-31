@@ -18,6 +18,7 @@ import {
   Globe,
   NotebookPen,
   SquareKanban,
+  LogIn,
 } from "lucide-react";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -86,7 +87,12 @@ export default function LandingPage() {
               <GithubIcon className="w-5 h-5" />
             </a>
             {supabaseEnabled && (
-              <Link href="/projects?signin=1" className="px-2 sm:px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors hover:opacity-80" style={{ color: "var(--text-secondary)" }}>
+              <Link
+                href="/projects?signin=1"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors hover:bg-[var(--bg-hover)]"
+                style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              >
+                <LogIn className="w-4 h-4 max-[380px]:hidden" />
                 Sign in
               </Link>
             )}

@@ -13,7 +13,20 @@ function GithubMark({ className }: { className?: string }) {
   );
 }
 
-function SignInDialog({ onClose }: { onClose(): void }) {
+const WELCOME_SEEN_KEY = "gds-signin-welcome-seen";
+
+/** True only the first time a guest opens the studio in this browser; remembers that it asked. */
+function shouldWelcomeGuest(): boolean {
+  try {
+    if (localStorage.getItem(WELCOME_SEEN_KEY)) return false;
+    localStorage.setItem(WELCOME_SEEN_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function SignInDialog({ isWelcome, onClose }: { isWelcome: boolean; onClose(): void }) {
   const { signInWithEmail, signInWithGitHub } = useSync();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
@@ -52,14 +65,15 @@ function SignInDialog({ onClose }: { onClose(): void }) {
       >
         <div className="flex items-center justify-between mb-1">
           <h2 id="signin-title" className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-            Sign in to sync
+            {isWelcome ? "Welcome! Sign in to keep your work" : "Sign in to sync"}
           </h2>
           <button onClick={onClose} style={{ color: "var(--text-muted)" }} aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
         <p className="text-xs mb-4 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-          Optional. Your projects get saved to your account so you can use them on any device. Anything already in
+          {isWelcome && "Signing in is free and optional. "}
+          {isWelcome ? "Your" : "Optional. Your"} projects get saved to your account so you can use them on any device. Anything already in
           this browser is moved into your account the first time you sign in.
         </p>
 
@@ -115,6 +129,15 @@ function SignInDialog({ onClose }: { onClose(): void }) {
             {error}
           </p>
         )}
+        {isWelcome && !sent && (
+          <button
+            onClick={onClose}
+            className="w-full mt-3 px-3 py-2 rounded-lg text-sm"
+            style={{ color: "var(--text-primary)", border: "1px solid var(--border)" }}
+          >
+            Continue without an account
+          </button>
+        )}
       </div>
     </div>
   );
@@ -122,17 +145,22 @@ function SignInDialog({ onClose }: { onClose(): void }) {
 
 export function AccountPanel() {
   const sync = useSync();
-  const [dialog, setDialog] = useState(false);
+  const [dialog, setDialog] = useState<"signin" | "welcome" | null>(null);
   const { status, user, folder } = sync;
 
-  // /projects?signin=1 (the landing page's "Sign in" link) opens the dialog straight away
+  // /projects?signin=1 (the landing page's "Sign in" link) opens the dialog straight away; a guest's first visit
+  // gets a welcome version they can skip
   useEffect(() => {
-    if (!sync.ready) return;
+    if (!sync.ready || !sync.cloudAvailable || user) return;
     const url = new URL(window.location.href);
-    if (!url.searchParams.has("signin")) return;
-    url.searchParams.delete("signin");
-    window.history.replaceState(null, "", url);
-    if (sync.cloudAvailable && !user) setDialog(true);
+    if (url.searchParams.has("signin")) {
+      url.searchParams.delete("signin");
+      window.history.replaceState(null, "", url);
+      shouldWelcomeGuest();
+      setDialog("signin");
+    } else if (shouldWelcomeGuest()) {
+      setDialog("welcome");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sync.ready]);
 
@@ -172,7 +200,7 @@ export function AccountPanel() {
           </div>
         ) : (
           <button
-            onClick={() => setDialog(true)}
+            onClick={() => setDialog("signin")}
             className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg font-medium"
             style={{ background: "var(--accent-glow)", color: "var(--accent)", border: "1px solid rgba(124,92,252,0.25)" }}
           >
@@ -215,7 +243,7 @@ export function AccountPanel() {
         Everything you make is yours: free downloads, no watermark, no attribution needed.
       </p>
 
-      {dialog && createPortal(<SignInDialog onClose={() => setDialog(false)} />, document.body)}
+      {dialog && createPortal(<SignInDialog isWelcome={dialog === "welcome"} onClose={() => setDialog(null)} />, document.body)}
     </div>
   );
 }
