@@ -131,7 +131,7 @@ export default function StoryPage() {
   useOpenParam((id) => {
     if (storage.getById("stories", id, projectId)) selectEntry(id);
   });
-  useTrackOpenAsset(selectedId ? { type: "story", id: selectedId } : null);
+  useTrackOpenAsset(stored ? { type: "story", id: stored.id } : null);
 
   const { showToast } = useToast();
 
