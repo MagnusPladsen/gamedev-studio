@@ -14,6 +14,7 @@ import { previewGain, usePreviewVolume } from "@/hooks/usePreviewVolume";
 import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
@@ -447,6 +448,7 @@ export default function SfxPage() {
               Draft, not in your project yet
             </span>
           )}
+          <HelpButton topic="sfx" />
           <ExportMenu items={[{ label: "WAV", description: "16-bit mono, 44.1 kHz", onClick: exportWav }]} />
         </div>
       </div>

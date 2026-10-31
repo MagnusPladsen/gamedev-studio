@@ -41,6 +41,7 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { COPY_FAILED_MESSAGE, useAssetMenu } from "@/components/AssetContextMenu";
@@ -1191,6 +1192,7 @@ export default function PixelArtPage() {
           />
           <div style={{ width: 1, height: 20, background: "var(--border)", margin: "0 4px" }} />
           <SaveIndicator state={touched ? saveState : "saved"} />
+          <HelpButton topic="pixel-art" />
           <ExportMenu
             items={[
               { label: "PNG (current frame)", description: `Frame ${activeFrame + 1} at ${canvasW}×${canvasH}`, onClick: exportPNG },

@@ -30,6 +30,7 @@ import { useOpenParam, useTrackOpenAsset, useStorageVersion } from "@/hooks/useS
 import { useHistory } from "@/hooks/useHistory";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { useAssetMenu } from "@/components/AssetContextMenu";
@@ -205,6 +206,7 @@ export default function TaskBoardPage() {
         </div>
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <SaveIndicator state="saved" className="hidden sm:inline-flex" />
+          <HelpButton topic="board" />
           <ExportMenu
             items={[
               { label: "CSV (all issues)", description: "Opens in any spreadsheet", onClick: exportCsv },

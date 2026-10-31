@@ -12,6 +12,7 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { useHistory } from "@/hooks/useHistory";
 import { useAutosave } from "@/hooks/useAutosave";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
@@ -400,6 +401,7 @@ export default function SpriteSheetPage() {
                 <SaveIndicator state={autosave.state} />
               </>
             )}
+            <HelpButton topic="sprites" />
             <ExportMenu
               disabled={!current || layout.frames.length === 0}
               items={[

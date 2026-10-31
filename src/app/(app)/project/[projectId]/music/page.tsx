@@ -26,6 +26,7 @@ import { previewGain, usePreviewVolume } from "@/hooks/usePreviewVolume";
 import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
@@ -609,6 +610,7 @@ export default function MusicPage() {
         </div>
         <div className="flex items-center gap-3">
           {activeTrack && <SaveIndicator state={autosave.state} />}
+          <HelpButton topic="music" />
           <ExportMenu
             disabled={!activeTrack}
             items={[{ label: "WAV (this pattern)", description: `${patternLen} beats, with muted channels left out`, onClick: exportWav }]}

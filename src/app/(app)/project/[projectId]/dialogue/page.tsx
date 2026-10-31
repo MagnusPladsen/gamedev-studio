@@ -5,6 +5,7 @@ import { useHistory } from "@/hooks/useHistory";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
@@ -717,6 +718,7 @@ export default function DialoguePage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <HelpButton topic="dialogue" />
             <PasteButton type="dialogue" />
             <button
               onClick={createTree}
@@ -887,7 +889,7 @@ export default function DialoguePage() {
           ))}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 max-md:flex-wrap">
           <button
             onClick={() => setZoom(Math.min(zoom + 0.2, 3))}
             className="p-1.5 rounded-lg"
@@ -935,6 +937,7 @@ export default function DialoguePage() {
             Preview
           </button>
           <SaveIndicator state={saveState} className="px-1" />
+          <HelpButton topic="dialogue" />
           <ExportMenu
             items={[
               { label: "JSON", description: "The whole tree, to re-import or load in code", onClick: exportTree },

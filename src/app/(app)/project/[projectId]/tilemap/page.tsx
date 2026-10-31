@@ -22,6 +22,7 @@ import { useConsumedParam, useOpenParam, useTrackOpenAsset, useStorageVersion } 
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
@@ -593,6 +594,7 @@ export default function TilemapPage() {
                 <SaveIndicator state={autosave.state} />
               </>
             )}
+            <HelpButton topic="tilemap" />
             <ExportMenu
               disabled={!current}
               items={[

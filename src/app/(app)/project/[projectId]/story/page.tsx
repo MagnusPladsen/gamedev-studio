@@ -34,6 +34,7 @@ import type { StoryEntry } from "@/types";
 import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { HelpButton } from "@/components/HelpButton";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import { useToast } from "@/components/Toast";
@@ -536,6 +537,7 @@ export default function StoryPage() {
             >
               <Network className="w-3.5 h-3.5" />
             </button>
+            <HelpButton topic="story" />
           </div>
           <div className="flex gap-1.5">
             <button
@@ -682,6 +684,7 @@ export default function StoryPage() {
               <button onClick={() => deleteEntry(selected.id)} className="p-1.5 rounded-md" style={{ color: "var(--red)", border: "1px solid var(--border)" }} title="Delete entry" aria-label="Delete entry">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
+              <HelpButton topic="story" className="md:hidden" />
             </div>
           </div>
 

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useParams, useSearchParams } from "next/navigation";
 import { Loader2, PanelTopOpen } from "lucide-react";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { BlenderCard } from "@/components/voxels/BlenderCard";
@@ -276,6 +277,7 @@ export default function VoxelsPage(): React.JSX.Element {
           <UndoRedoButtons history={editor.history} />
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
           {doc && <SaveIndicator state={editor.saveState} />}
+          <HelpButton topic="voxels" />
           <ExportMenu disabled={!doc} items={exportItems} />
         </div>
       </div>

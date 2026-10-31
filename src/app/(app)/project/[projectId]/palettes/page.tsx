@@ -13,6 +13,7 @@ import { useHistory } from "@/hooks/useHistory";
 import { useAutosave } from "@/hooks/useAutosave";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { ExportMenu } from "@/components/ExportMenu";
+import { HelpButton } from "@/components/HelpButton";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
@@ -220,6 +221,7 @@ export default function PalettesPage() {
           <Library className="w-3.5 h-3.5" />
           Palettes & presets
         </button>
+        <HelpButton topic="palettes" className="ml-auto" />
       </div>
 
       {/* Sidebar */}
@@ -235,6 +237,7 @@ export default function PalettesPage() {
               Palettes
             </span>
             <div className="flex items-center gap-1">
+              <HelpButton topic="palettes" className="max-md:hidden" />
               <PasteButton type="palette" />
               <button onClick={openNewForm} className="p-1 rounded" style={{ color: "var(--accent)" }} title="New palette" aria-label="New palette">
                 <Plus className="w-4 h-4" />

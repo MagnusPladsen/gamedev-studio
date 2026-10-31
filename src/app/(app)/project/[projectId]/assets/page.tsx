@@ -15,6 +15,7 @@ import { isExample } from "@/lib/examples";
 import { ASSET_ICONS } from "@/components/asset-icons";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { NewBadge, isNewTool } from "@/components/NewBadge";
+import { HelpButton } from "@/components/HelpButton";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, listAssets } from "@/lib/assets";
 import { getRelated } from "@/lib/links";
 import { getAssetName, getStoredAsset } from "@/lib/asset-actions";
@@ -30,7 +31,7 @@ const DESCRIPTIONS: Record<AssetType, string> = {
   music: "Compose game music",
   sound: "Generate sound effects",
   tilemap: "Paint levels with your sprites",
-  diagram: "Plan game logic",
+  diagram: "Moodboards, plans and flow charts",
   story: "Lore, characters and places",
   dialogue: "Branching conversations",
   palette: "Shared colour palettes",
@@ -129,15 +130,18 @@ export default function AssetsPage() {
             </p>
           )}
         </div>
-        <button
-          onClick={exportProject}
-          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm shrink-0"
-          style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border-hover)" }}
-          title="Download the whole project as one JSON file (import it again from the Projects page)"
-        >
-          <Download className="w-4 h-4" />
-          Export project
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <HelpButton topic="assets" />
+          <button
+            onClick={exportProject}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm shrink-0 max-md:flex-1"
+            style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border-hover)" }}
+            title="Download the whole project as one JSON file (import it again from the Projects page)"
+          >
+            <Download className="w-4 h-4" />
+            Export project
+          </button>
+        </div>
       </div>
       <ExamplesBar projectId={projectId} collections={ASSET_COLLECTIONS} className="mb-8" />
 

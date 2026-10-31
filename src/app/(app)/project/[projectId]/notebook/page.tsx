@@ -31,6 +31,7 @@ import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import type { Note } from "@/types";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { HelpButton } from "@/components/HelpButton";
 import { useAssetMenu, type MenuTriggerProps } from "@/components/AssetContextMenu";
 import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 
@@ -696,6 +697,7 @@ export default function NotebookPage() {
             <span className="text-xs" style={{ color: "var(--text-muted)" }}>
               {notes.length}
             </span>
+            <HelpButton topic="notebook" />
           </div>
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={inputStyle}>
             <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
@@ -881,6 +883,7 @@ export default function NotebookPage() {
                 <button onClick={deleteNote} className="p-1.5 rounded-md" style={{ color: "var(--red)", border: "1px solid var(--border)" }} title="Delete note" aria-label="Delete note">
                   <Trash2 className="w-4 h-4" />
                 </button>
+                <HelpButton topic="notebook" className="md:hidden" />
               </div>
 
               <div className="flex items-center gap-3 flex-wrap text-xs">
