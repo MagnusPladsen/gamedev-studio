@@ -1,0 +1,52 @@
+{
+  "name": "gamedev-studio-desktop",
+  "productName": "GameDev Studio",
+  "version": "0.1.0-beta",
+  "description": "Free, open source game-dev toolkit that runs on your own computer.",
+  "homepage": "https://gamedev-studio.pladsen.dev",
+  "repository": "github:MagnusPladsen/gamedev-studio",
+  "license": "MIT",
+  "author": {
+    "name": "Magnus Pladsen",
+    "email": "93226629+MagnusPladsen@users.noreply.github.com"
+  },
+  "private": true,
+  "main": "main.mjs",
+  "scripts": {
+    "prepare-server": "node scripts/prepare.mjs",
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.9.3",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "dev.pladsen.gamedev-studio",
+    "productName": "GameDev Studio",
+    "directories": {
+      "output": "dist"
+    },
+    "files": ["main.mjs", "package.json"],
+    "afterPack": "scripts/after-pack.mjs",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": "dmg",
+      "identity": "-",
+      "artifactName": "GameDev-Studio-mac-${arch}.${ext}"
+    },
+    "win": {
+      "target": "nsis",
+      "artifactName": "GameDev-Studio-windows-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development",
+      "artifactName": "GameDev-Studio-linux-x64.${ext}"
+    }
+  }
+}

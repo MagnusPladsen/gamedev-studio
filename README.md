@@ -15,7 +15,7 @@ A free, open source game development toolkit. Create pixel art, music, sound eff
 
 **No watermarks. No paywalls. No account required.** Everything you make is yours.
 
-**[Open the app →](https://gamedev-studio.pladsen.dev)** &nbsp;·&nbsp; [Download the latest release](https://github.com/MagnusPladsen/gamedev-studio/releases/latest) &nbsp;·&nbsp; [Report a bug](https://github.com/MagnusPladsen/gamedev-studio/issues/new)
+**[Open the app →](https://gamedev-studio.pladsen.dev)** &nbsp;·&nbsp; [Download the desktop app](https://github.com/MagnusPladsen/gamedev-studio/releases/latest) &nbsp;·&nbsp; [Report a bug](https://github.com/MagnusPladsen/gamedev-studio/issues/new)
 
 > **Beta:** GameDev Studio is under active development. Features may change and bugs are expected.
 > Use *Export project* now and then to keep a backup, and please [open an issue](https://github.com/MagnusPladsen/gamedev-studio/issues) if something breaks.
@@ -57,6 +57,30 @@ Every tool ships with small hand-made examples to edit, so what you export is yo
 | **Your account** | Sign in with GitHub or an email link to sync across devices. The first time you sign in, projects already in the browser are moved into your account |
 | **A folder on your computer** | *Save to a local folder* writes every project as JSON files (Chrome/Edge). Great for self-hosting and for keeping projects in git |
 | **Export file** | *Export project* downloads one `.gamedev.json` you can import anywhere |
+
+## Desktop app
+
+Download GameDev Studio for macOS (`.dmg`), Windows (`.exe`) or Linux (`.AppImage` / `.deb`) from the
+[latest release](https://github.com/MagnusPladsen/gamedev-studio/releases/latest). It works offline and needs no
+account. Projects are saved inside the app, or use *Save to a local folder* to keep them as JSON files on disk.
+
+The builds aren't code-signed yet, so the first launch shows a warning: on macOS open System Settings →
+Privacy & Security → *Open Anyway*; on Windows click *More info* → *Run anyway*.
+
+The app (in `desktop/`) is Electron running the studio's own Next.js server on `127.0.0.1:47615`. To build it
+yourself:
+
+```bash
+DESKTOP_BUILD=1 npm run build
+cd desktop
+npm install
+npm run prepare-server
+npm start          # run it, or: npx electron-builder --mac / --win / --linux
+```
+
+**Releasing:** push a tag such as `v0.2.0`. The *Desktop release* workflow builds all three platforms and attaches
+the installers to a draft release. Publish it as a normal release (not a pre-release): the download links on the
+website point at `releases/latest`, which skips pre-releases.
 
 ## Run it yourself
 

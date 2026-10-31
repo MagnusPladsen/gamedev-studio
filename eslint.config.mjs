@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Desktop build output: the copied server and the packaged installers.
+    "desktop/server/**",
+    "desktop/dist/**",
   ]),
 ]);
 
