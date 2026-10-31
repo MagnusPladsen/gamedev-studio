@@ -28,7 +28,7 @@ Redirect URLs (already listed in `supabase/config.toml`).
 | Music | 4-channel piano roll, note length + drag, zoom, listening volume, WAV export |
 | SFX | sfxr-style generator, waveform, listening volume, WAV export |
 | Tilemap | Paints with project sprites, layers, fill, PNG + Tiled-style JSON export |
-| Diagrams | State machines/flow charts, nodes can point at any asset, PNG/JSON export |
+| Diagrams | Milanote-style board: notes, to-dos, images, link cards with YouTube/Spotify/Vimeo/SoundCloud players (previews via `/api/link-preview`), asset cards, groups, colours; flow-chart shapes; PNG/JSON export |
 | Story | Obsidian-style `[[links]]`, hover summaries, backlinks, graph, templates |
 | Notebook | Folders, pins, checklists, templates, `[[links]]` to notes and story |
 | Dialogue | Branching nodes, preview, JSON + Yarn Spinner export |

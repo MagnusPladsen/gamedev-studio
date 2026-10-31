@@ -232,11 +232,11 @@ describe("references and delete", () => {
 describe("diagram, note and task helpers", () => {
   it("adds a node at 0,0 in an empty diagram", () => {
     expect(addAssetToDiagram("p1", "empty", noteRef)!.nodes.at(-1)).toMatchObject({
-      type: "custom",
+      type: "asset",
       x: 0,
       y: 0,
-      width: 140,
-      height: 56,
+      width: 220,
+      height: 64,
       data: { asset: noteRef },
     });
   });

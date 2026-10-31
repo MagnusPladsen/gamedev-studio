@@ -58,7 +58,7 @@ const tools = [
   { icon: Music, name: "Music Composer", description: "Pattern-based music creation with multiple channels and instruments. Think BeepBox meets FL Studio." },
   { icon: Volume2, name: "SFX Generator", description: "Generate retro and modern sound effects with presets for explosions, lasers, pickups, and more." },
   { icon: Grid3X3, name: "Tilemap Editor", description: "Paint game levels using your own sprites. Multiple layers, auto-tiling, and collision maps." },
-  { icon: GitBranch, name: "Logic Diagrams", description: "Plan game systems with flow charts, state machines, and behavior trees. Like draw.io for games." },
+  { icon: GitBranch, name: "Diagrams & Boards", description: "Moodboards, story flow, level plans and reference boards with notes, images, videos, links and to-dos. Flow charts and state machines too." },
   { icon: BookOpen, name: "Story & Worldbuilding", description: "Write lore, create characters, and link everything together. Wiki-style connections like Obsidian." },
   { icon: MessageSquare, name: "Dialogue Trees", description: "Visual branching dialogue editor for RPGs and adventure games. Connect speakers and choices." },
   { icon: Palette, name: "Color Palettes", description: "Manage and share color palettes across all your tools. Built-in game-ready palette presets." },
@@ -152,7 +152,7 @@ export default function LandingPage() {
             style={{ color: "var(--text-secondary)" }}
           >
             Pixel art, music, sound effects, tilemaps, dialogue, story &amp;
-            worldbuilding, logic diagrams — all connected in one free toolkit.
+            worldbuilding, moodboards and diagrams — all connected in one free toolkit.
             Create, link, and export everything for your game.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in stagger-3 opacity-0">

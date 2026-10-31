@@ -108,7 +108,18 @@ export interface MusicNote {
 
 export interface DiagramNode {
   id: string;
-  type: "state" | "action" | "condition" | "event" | "note" | "custom";
+  type:
+    | "state"
+    | "action"
+    | "condition"
+    | "event"
+    | "note"
+    | "custom"
+    | "checklist"
+    | "image"
+    | "link"
+    | "asset"
+    | "group";
   x: number;
   y: number;
   width: number;

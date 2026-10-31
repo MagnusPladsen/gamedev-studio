@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { useHistory } from "@/hooks/useHistory";
+import { useHistory, isTextField } from "@/hooks/useHistory";
 import { UndoRedoButtons } from "@/components/UndoRedoButtons";
 import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { HelpButton } from "@/components/HelpButton";
+import { useToast } from "@/components/Toast";
 import { useParams } from "next/navigation";
 import {
   Plus,
@@ -15,71 +17,39 @@ import {
   Link2,
   ZoomIn,
   ZoomOut,
-  RotateCcw,
-  Square,
-  Circle,
-  Diamond,
-  Hexagon,
-  StickyNote,
-  ChevronDown,
+  Maximize,
   ArrowRight,
   GitBranch,
-  ExternalLink,
 } from "lucide-react";
-import Link from "next/link";
 import { v4 as uuid } from "uuid";
 import { storage } from "@/lib/storage";
-import type { Diagram, DiagramNode, DiagramEdge, AssetRef } from "@/types";
+import type { Diagram, DiagramNode, AssetRef } from "@/types";
 import { useOpenParam, useTrackOpenAsset } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetPickerModal } from "@/components/AssetPickerModal";
 import { createLongPress } from "@/lib/long-press";
-import type { Point } from "@/lib/menu-position";
-import { ASSET_KINDS, ASSET_TYPES, assetHref, getAsset, listAssets } from "@/lib/assets";
-
-// Literal colors: these are also used on the canvas, which can't resolve CSS variables.
-const NODE_COLORS: Record<DiagramNode["type"], string> = {
-  state: "#60a5fa",
-  action: "#34d399",
-  condition: "#fbbf24",
-  event: "#f472b6",
-  note: "#666680",
-  custom: "#7c5cfc",
-};
-
-function nodeAsset(node: DiagramNode): AssetRef | undefined {
-  const a = node.data?.asset as AssetRef | undefined;
-  return a && typeof a.id === "string" && typeof a.type === "string" ? a : undefined;
-}
-
-const NODE_LABELS: Record<DiagramNode["type"], string> = {
-  state: "State",
-  action: "Action",
-  condition: "Condition",
-  event: "Event",
-  note: "Note",
-  custom: "Custom",
-};
-
-const NODE_ICONS: Record<DiagramNode["type"], typeof Square> = {
-  state: Circle,
-  action: Square,
-  condition: Diamond,
-  event: Hexagon,
-  note: StickyNote,
-  custom: Square,
-};
-
-const LABEL_OFFSET = 14;
-
-/** Where an edge's label pill sits: beside the middle of the line, on the left of its direction. */
-function edgeLabelPos(fx: number, fy: number, tx: number, ty: number) {
-  const dx = tx - fx;
-  const dy = ty - fy;
-  const len = Math.hypot(dx, dy) || 1;
-  return { x: (fx + tx) / 2 + (dy / len) * LABEL_OFFSET, y: (fy + ty) / 2 - (dx / len) * LABEL_OFFSET };
-}
+import type { Point as MenuPoint } from "@/lib/menu-position";
+import { ASSET_KINDS, getAsset } from "@/lib/assets";
+import {
+  defaultSize,
+  isAutoHeight,
+  isFlowShape,
+  NODE_LABELS,
+  linkPreview,
+  linkUrl,
+  nodeAsset,
+  type NodeType,
+} from "@/lib/diagrams/cards";
+import { isImageUrl, normalizeUrl } from "@/lib/diagrams/embeds";
+import { boundsOf, idsInside, stackColumn, type Point, type Rect } from "@/lib/diagrams/geometry";
+import { imageFilesFrom, readImageFile } from "@/lib/diagrams/image-file";
+import { renderDiagramPng, type AssetLook } from "@/lib/diagrams/render-png";
+import { DiagramCard } from "@/components/diagrams/DiagramCard";
+import { EdgeLayer } from "@/components/diagrams/EdgeLayer";
+import { SelectionPanel } from "@/components/diagrams/SelectionPanel";
+import { AddCardMenu } from "@/components/diagrams/AddCardMenu";
 
 function downloadFile(name: string, href: string) {
   const a = document.createElement("a");
@@ -90,12 +60,41 @@ function downloadFile(name: string, href: string) {
 
 type Mode = "select" | "connect";
 
+type Interaction =
+  | { kind: "drag"; nodeId: string; start: Point; origins: Map<string, Point>; hasMoved: boolean }
+  | { kind: "pan"; start: Point; pan: Point }
+  | { kind: "resize"; nodeId: string; start: Point; width: number; height: number }
+  | { kind: "connect"; fromId: string }
+  | { kind: "pinch"; distance: number; zoom: number; anchor: Point };
+
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 3;
+const DOUBLE_TAP_MS = 320;
+const DRAG_THRESHOLD_PX = 3;
+const GRID = 30;
+
+const clampZoom = (z: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+
+function closestData(target: EventTarget | null, attribute: string): string | null {
+  const element = target instanceof Element ? target.closest(`[${attribute}]`) : null;
+  return element ? element.getAttribute(attribute) : null;
+}
+
+function describeAsset(projectId: string, node: DiagramNode): AssetLook | null {
+  const ref = nodeAsset(node);
+  const summary = ref ? getAsset(projectId, ref.type, ref.id) : undefined;
+  if (!ref || !summary) return null;
+  const kind = ASSET_KINDS[ref.type];
+  return { name: summary.name, kind: kind.label, color: kind.color, thumbnail: summary.thumbnail };
+}
+
 export default function DiagramsPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { showToast } = useToast();
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
   const [current, setCurrent] = useState<Diagram | null>(null);
@@ -106,49 +105,50 @@ export default function DiagramsPage() {
   const [zoom, setZoom] = useState(1);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<{ nodeId: string; offX: number; offY: number } | null>(null);
-  const [panning, setPanning] = useState<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const [isInteracting, setIsInteracting] = useState(false);
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
+  const [connectDraft, setConnectDraft] = useState<{ fromId: string; to: Point } | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null);
-  const [editText, setEditText] = useState("");
-  const [showNodeMenu, setShowNodeMenu] = useState(false);
+  const [measured, setMeasured] = useState<Record<string, number>>({});
+  const [loadingPreviews, setLoadingPreviews] = useState<ReadonlySet<string>>(new Set());
+  const [assetPicker, setAssetPicker] = useState<{ replaceId: string | null } | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const lastTap = useRef(0);
+
+  const interaction = useRef<Interaction | null>(null);
+  const pointers = useRef(new Map<number, Point>());
+  const lastTap = useRef({ key: "", time: 0 });
+  const imageTarget = useRef<{ replaceId: string | null; at: Point | null }>({ replaceId: null, at: null });
+
   const { assetTriggerProps, pasteTriggerProps, openAssetMenu } = useAssetMenu();
   const pressedNode = useRef<{ node: DiagramNode; asset: AssetRef } | null>(null);
   const hasPressFired = useRef(false);
-  const fireLongPress = useRef<(point: Point) => void>(() => {});
+  const fireLongPress = useRef<(point: MenuPoint) => void>(() => {});
   const [longPress] = useState(() => createLongPress((point) => fireLongPress.current(point)));
   useEffect(() => {
     fireLongPress.current = (point) => {
       const pressed = pressedNode.current;
       if (!pressed) return;
       hasPressFired.current = true;
-      lastTap.current = 0;
-      setDragging(null);
-      setCurrent((previous) => {
-        const moved = previous?.nodes.find((n) => n.id === pressed.node.id);
-        if (!previous || !moved || (moved.x === pressed.node.x && moved.y === pressed.node.y)) return previous;
-        return {
-          ...previous,
-          nodes: previous.nodes.map((n) => (n.id === pressed.node.id ? { ...n, x: pressed.node.x, y: pressed.node.y } : n)),
-        };
-      });
+      lastTap.current = { key: "", time: 0 };
+      const drag = interaction.current;
+      if (drag?.kind === "drag") restorePositions(drag.origins);
+      interaction.current = null;
+      setIsInteracting(false);
       openAssetMenu(point, pressed.asset, null);
     };
   });
   useEffect(() => () => longPress.cancel(), [longPress]);
 
-  // Undo history tracks content only (not updatedAt), and a node drag counts once, on release.
+  // Undo history tracks content only (not updatedAt), and a drag or resize counts once, on release.
   const content = useMemo(
     () => (current ? { name: current.name, nodes: current.nodes, edges: current.edges } : null),
     [current?.name, current?.nodes, current?.edges] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const [stableContent, setStableContent] = useState(content);
-  if (!dragging && stableContent !== content) setStableContent(content);
+  if (!isInteracting && stableContent !== content) setStableContent(content);
   const history = useHistory(
-    dragging ? stableContent : content,
+    isInteracting ? stableContent : content,
     (v) => {
       if (!v) return;
       setCurrent((c) => (c ? { ...c, ...v, updatedAt: new Date().toISOString() } : c));
@@ -158,7 +158,7 @@ export default function DiagramsPage() {
     current?.id
   );
 
-  // Every edit is saved a moment later; a node drag saves once, on release.
+  // Every edit is saved a moment later; a drag saves once, on release.
   const autosave = useAutosave(
     current,
     (d) => {
@@ -167,7 +167,7 @@ export default function DiagramsPage() {
       storage.save("diagrams", d, projectId);
       setDiagrams(storage.getAll("diagrams", projectId));
     },
-    { resetKey: current?.id, enabled: !dragging }
+    { resetKey: current?.id, enabled: !isInteracting }
   );
 
   const flushSave = autosave.flush;
@@ -182,8 +182,8 @@ export default function DiagramsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [flushSave]);
 
-  const stateRef = useRef({ pan, zoom, current, dragging, panning, mode, connectFrom, selectedNodeId, selectedEdgeId });
-  stateRef.current = { pan, zoom, current, dragging, panning, mode, connectFrom, selectedNodeId, selectedEdgeId };
+  const view = useRef({ pan, zoom });
+  view.current = { pan, zoom };
 
   useEffect(() => {
     const all = storage.getAll("diagrams", projectId);
@@ -201,520 +201,482 @@ export default function DiagramsPage() {
   }, loaded);
   useTrackOpenAsset(current?.id ? { type: "diagram", id: current?.id } : null);
 
-  // --- Drawing ---
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const { current: diagram } = stateRef.current;
-    const { pan: p, zoom: z, selectedNodeId: selNode, selectedEdgeId: selEdge, connectFrom: cf } = stateRef.current;
+  // --- Geometry ---
+  const rectOf = useCallback(
+    (node: DiagramNode): Rect => ({
+      x: node.x,
+      y: node.y,
+      width: node.width,
+      height: isAutoHeight(node.type) ? measured[node.id] ?? node.height : node.height,
+    }),
+    [measured]
+  );
 
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const onMeasure = useCallback((id: string, height: number) => {
+    setMeasured((m) => (m[id] === height ? m : { ...m, [id]: height }));
+  }, []);
 
-    ctx.fillStyle = "#0a0a0f";
-    ctx.fillRect(0, 0, rect.width, rect.height);
-    const deletedBadgeColor = getComputedStyle(canvas).getPropertyValue("--text-muted").trim() || "#555570";
-
-    // Grid
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.scale(z, z);
-    const gridSize = 30;
-    const startX = Math.floor(-p.x / z / gridSize) * gridSize - gridSize;
-    const startY = Math.floor(-p.y / z / gridSize) * gridSize - gridSize;
-    const endX = startX + rect.width / z + gridSize * 2;
-    const endY = startY + rect.height / z + gridSize * 2;
-    ctx.strokeStyle = "#1a1a28";
-    ctx.lineWidth = 0.5;
-    for (let x = startX; x < endX; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, startY);
-      ctx.lineTo(x, endY);
-      ctx.stroke();
-    }
-    for (let y = startY; y < endY; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(startX, y);
-      ctx.lineTo(endX, y);
-      ctx.stroke();
-    }
-
-    if (!diagram) {
-      ctx.restore();
-      return;
-    }
-
-    // Edges
-    for (const edge of diagram.edges) {
-      const fromNode = diagram.nodes.find((n) => n.id === edge.from);
-      const toNode = diagram.nodes.find((n) => n.id === edge.to);
-      if (!fromNode || !toNode) continue;
-
-      const fx = fromNode.x + fromNode.width / 2;
-      const fy = fromNode.y + fromNode.height / 2;
-      const tx = toNode.x + toNode.width / 2;
-      const ty = toNode.y + toNode.height / 2;
-
-      const isSel = edge.id === selEdge;
-      ctx.strokeStyle = isSel ? "#ffffff" : "#555570";
-      ctx.lineWidth = isSel ? 2.5 : 1.5;
-
-      if (edge.type === "dashed") {
-        ctx.setLineDash([6, 4]);
-      } else {
-        ctx.setLineDash([]);
-      }
-
-      ctx.beginPath();
-      ctx.moveTo(fx, fy);
-      ctx.lineTo(tx, ty);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Arrowhead
-      if (edge.type !== "line") {
-        const angle = Math.atan2(ty - fy, tx - fx);
-        const headLen = 12;
-        // clip arrow to node boundary
-        const dx = tx - fx;
-        const dy = ty - fy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const clipDist = Math.max(0, dist - toNode.width / 2 - 4);
-        const cx2 = fx + (dx / dist) * clipDist;
-        const cy2 = fy + (dy / dist) * clipDist;
-        ctx.fillStyle = isSel ? "#ffffff" : "#555570";
-        ctx.beginPath();
-        ctx.moveTo(cx2, cy2);
-        ctx.lineTo(cx2 - headLen * Math.cos(angle - 0.4), cy2 - headLen * Math.sin(angle - 0.4));
-        ctx.lineTo(cx2 - headLen * Math.cos(angle + 0.4), cy2 - headLen * Math.sin(angle + 0.4));
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      // Edge label: a small pill beside the line so it never covers the arrow
-      if (edge.label) {
-        const { x: lx, y: ly } = edgeLabelPos(fx, fy, tx, ty);
-        ctx.font = "11px system-ui, sans-serif";
-        const w = ctx.measureText(edge.label).width + 12;
-        ctx.fillStyle = "#14141d";
-        ctx.strokeStyle = isSel ? "#ffffff" : "#2e2e40";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(lx - w / 2, ly - 9, w, 18, 9);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#c4c4dc";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(edge.label, lx, ly + 0.5);
-      }
-    }
-
-    // Connect-mode line
-    if (cf) {
-      const fromN = diagram.nodes.find((n) => n.id === cf);
-      if (fromN && (window as unknown as { __mouseCanvas?: { x: number; y: number } }).__mouseCanvas) {
-        const mc = (window as unknown as { __mouseCanvas: { x: number; y: number } }).__mouseCanvas;
-        ctx.strokeStyle = "#7c5cfc";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.moveTo(fromN.x + fromN.width / 2, fromN.y + fromN.height / 2);
-        ctx.lineTo(mc.x, mc.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    }
-
-    // Nodes
-    for (const node of diagram.nodes) {
-      const isSel = node.id === selNode;
-      const col = NODE_COLORS[node.type] || "#7c5cfc";
-      const isConnSrc = node.id === cf;
-
-      ctx.save();
-      // Shadow
-      ctx.shadowColor = isSel ? col : "rgba(0,0,0,0.3)";
-      ctx.shadowBlur = isSel ? 12 : 6;
-      ctx.shadowOffsetY = 2;
-
-      // Shape
-      ctx.fillStyle = "#16161f";
-      ctx.strokeStyle = isConnSrc ? "#ffffff" : col;
-      ctx.lineWidth = isSel ? 2.5 : 1.5;
-
-      if (node.type === "condition") {
-        // Diamond
-        const cx = node.x + node.width / 2;
-        const cy = node.y + node.height / 2;
-        ctx.beginPath();
-        ctx.moveTo(cx, node.y - 4);
-        ctx.lineTo(node.x + node.width + 4, cy);
-        ctx.lineTo(cx, node.y + node.height + 4);
-        ctx.lineTo(node.x - 4, cy);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else if (node.type === "event") {
-        // Hexagon
-        const cx = node.x + node.width / 2;
-        const cy = node.y + node.height / 2;
-        const hw = node.width / 2;
-        const hh = node.height / 2;
-        const inset = 16;
-        ctx.beginPath();
-        ctx.moveTo(node.x + inset, node.y);
-        ctx.lineTo(node.x + node.width - inset, node.y);
-        ctx.lineTo(node.x + node.width, cy);
-        ctx.lineTo(node.x + node.width - inset, node.y + node.height);
-        ctx.lineTo(node.x + inset, node.y + node.height);
-        ctx.lineTo(node.x, cy);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      } else if (node.type === "note") {
-        const fold = 12;
-        ctx.beginPath();
-        ctx.moveTo(node.x, node.y);
-        ctx.lineTo(node.x + node.width - fold, node.y);
-        ctx.lineTo(node.x + node.width, node.y + fold);
-        ctx.lineTo(node.x + node.width, node.y + node.height);
-        ctx.lineTo(node.x, node.y + node.height);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        // fold triangle
-        ctx.beginPath();
-        ctx.moveTo(node.x + node.width - fold, node.y);
-        ctx.lineTo(node.x + node.width - fold, node.y + fold);
-        ctx.lineTo(node.x + node.width, node.y + fold);
-        ctx.strokeStyle = isConnSrc ? "#ffffff" : col;
-        ctx.stroke();
-      } else {
-        // State or Action — rounded rect vs sharp
-        const r = node.type === "state" ? 12 : 4;
-        ctx.beginPath();
-        ctx.roundRect(node.x, node.y, node.width, node.height, r);
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      ctx.restore();
-
-      // Label
-      ctx.fillStyle = "#f0f0f5";
-      ctx.font = "13px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(node.label, node.x + node.width / 2, node.y + node.height / 2, node.width - 12);
-
-      // Linked-asset badge
-      const linked = nodeAsset(node);
-      if (linked) {
-        const isDeleted = !storage.getById(ASSET_KINDS[linked.type].collection, linked.id, projectId);
-        const bx = node.x + node.width - 2;
-        const by = node.y + 2;
-        ctx.fillStyle = isDeleted
-          ? deletedBadgeColor
-          : ASSET_KINDS[linked.type]?.color ?? "#7c5cfc";
-        ctx.beginPath();
-        ctx.arc(bx, by, 7, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#0a0a0f";
-        ctx.font = "bold 9px system-ui, sans-serif";
-        ctx.fillText("↗", bx, by + 0.5);
-      }
-
-      // Connection handles
-      if (isSel || isConnSrc) {
-        const hSize = 5;
-        const positions = [
-          { x: node.x + node.width / 2, y: node.y },
-          { x: node.x + node.width, y: node.y + node.height / 2 },
-          { x: node.x + node.width / 2, y: node.y + node.height },
-          { x: node.x, y: node.y + node.height / 2 },
-        ];
-        for (const pos of positions) {
-          ctx.fillStyle = col;
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y, hSize, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-
-    ctx.restore();
-
-    // Zoom indicator
-    ctx.fillStyle = "#1e1e2a";
-    ctx.fillRect(rect.width - 80, rect.height - 32, 70, 24);
-    ctx.fillStyle = "#8888a0";
-    ctx.font = "11px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(`${Math.round(z * 100)}%`, rect.width - 45, rect.height - 20);
-  }, [projectId]);
-
-  // Animation loop
-  useEffect(() => {
-    let raf: number;
-    const loop = () => {
-      draw();
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [draw]);
-
-  // --- Helpers ---
-  function screenToCanvas(sx: number, sy: number) {
-    const rect = canvasRef.current?.getBoundingClientRect();
+  function toBoard(clientX: number, clientY: number): Point {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const { pan: p, zoom: z } = view.current;
     if (!rect) return { x: 0, y: 0 };
-    return {
-      x: (sx - rect.left - pan.x) / zoom,
-      y: (sy - rect.top - pan.y) / zoom,
+    return { x: (clientX - rect.left - p.x) / z, y: (clientY - rect.top - p.y) / z };
+  }
+
+  function viewportCenter(): Point {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    return rect ? toBoard(rect.left + rect.width / 2, rect.top + rect.height / 2) : { x: 0, y: 0 };
+  }
+
+  function zoomAround(clientX: number, clientY: number, nextZoom: number) {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const { pan: p, zoom: z } = view.current;
+    const target = clampZoom(nextZoom);
+    if (!rect) return setZoom(target);
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+    setPan({ x: mx - ((mx - p.x) / z) * target, y: my - ((my - p.y) / z) * target });
+    setZoom(target);
+  }
+
+  function zoomBy(factor: number) {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (rect) zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, view.current.zoom * factor);
+  }
+
+  function fitToCards() {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const bounds = current ? boundsOf(current.nodes.map(rectOf)) : null;
+    if (!rect || !bounds) {
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const z = clampZoom(Math.min(1, (rect.width - 80) / bounds.width, (rect.height - 80) / bounds.height));
+    setZoom(z);
+    setPan({ x: rect.width / 2 - (bounds.x + bounds.width / 2) * z, y: rect.height / 2 - (bounds.y + bounds.height / 2) * z });
+  }
+
+  // Wheel zooms around the pointer; a trackpad pinch arrives as ctrl+wheel with small steps.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.ctrlKey ? Math.exp(-e.deltaY * 0.01) : e.deltaY > 0 ? 0.9 : 1.1;
+      zoomAround(e.clientX, e.clientY, view.current.zoom * factor);
     };
-  }
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
+  });
 
-  function hitTestNode(cx: number, cy: number): DiagramNode | null {
-    if (!current) return null;
-    for (let i = current.nodes.length - 1; i >= 0; i--) {
-      const n = current.nodes[i];
-      if (cx >= n.x && cx <= n.x + n.width && cy >= n.y && cy <= n.y + n.height) {
-        return n;
-      }
-    }
-    return null;
-  }
-
-  function hitTestEdge(cx: number, cy: number): DiagramEdge | null {
-    if (!current) return null;
-    for (const edge of current.edges) {
-      const fromNode = current.nodes.find((n) => n.id === edge.from);
-      const toNode = current.nodes.find((n) => n.id === edge.to);
-      if (!fromNode || !toNode) continue;
-      const fx = fromNode.x + fromNode.width / 2;
-      const fy = fromNode.y + fromNode.height / 2;
-      const tx = toNode.x + toNode.width / 2;
-      const ty = toNode.y + toNode.height / 2;
-      const dist = pointToSegDist(cx, cy, fx, fy, tx, ty);
-      if (dist < 8) return edge;
-      if (edge.label) {
-        const l = edgeLabelPos(fx, fy, tx, ty);
-        const halfW = edge.label.length * 3.2 + 6;
-        if (Math.abs(cx - l.x) <= halfW && Math.abs(cy - l.y) <= 9) return edge;
-      }
-    }
-    return null;
-  }
-
-  function pointToSegDist(px: number, py: number, x1: number, y1: number, x2: number, y2: number) {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
-    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
-  }
-
+  // --- Editing the diagram ---
   function updateCurrent(fn: (d: Diagram) => Diagram) {
-    setCurrent((prev) => {
-      if (!prev) return prev;
-      const next = fn({ ...prev, updatedAt: new Date().toISOString() });
-      return next;
-    });
+    setCurrent((prev) => (prev ? fn({ ...prev, updatedAt: new Date().toISOString() }) : prev));
   }
 
-  // --- Mouse handlers ---
-  function handleMouseDown(e: React.MouseEvent) {
-    const { x, y } = screenToCanvas(e.clientX, e.clientY);
-    (window as unknown as { __mouseCanvas: { x: number; y: number } }).__mouseCanvas = { x, y };
+  const updateNode = useCallback((id: string, patch: Partial<DiagramNode>) => {
+    setCurrent((prev) =>
+      prev
+        ? { ...prev, updatedAt: new Date().toISOString(), nodes: prev.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }
+        : prev
+    );
+  }, []);
 
-    if (mode === "connect") {
-      const node = hitTestNode(x, y);
-      if (node) {
-        if (!connectFrom) {
-          setConnectFrom(node.id);
-        } else if (connectFrom !== node.id) {
-          updateCurrent((d) => ({
-            ...d,
-            edges: [...d.edges, { id: uuid(), from: connectFrom!, to: node.id, label: "", type: "arrow" }],
-          }));
-          setConnectFrom(null);
-        }
-      } else {
-        setConnectFrom(null);
-      }
-      return;
-    }
-
-    const node = hitTestNode(x, y);
-    if (node) {
-      setSelectedNodeId(node.id);
-      setSelectedEdgeId(null);
-      setDragging({ nodeId: node.id, offX: x - node.x, offY: y - node.y });
-      return;
-    }
-
-    const edge = hitTestEdge(x, y);
-    if (edge) {
-      setSelectedEdgeId(edge.id);
-      setSelectedNodeId(null);
-      return;
-    }
-
-    setSelectedNodeId(null);
-    setSelectedEdgeId(null);
-    // Pan
-    setPanning({ startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y });
+  function restorePositions(origins: Map<string, Point>) {
+    updateCurrent((d) => ({ ...d, nodes: d.nodes.map((n) => (origins.has(n.id) ? { ...n, ...origins.get(n.id)! } : n)) }));
   }
 
-  function handleMouseMove(e: React.MouseEvent) {
-    const { x, y } = screenToCanvas(e.clientX, e.clientY);
-    (window as unknown as { __mouseCanvas: { x: number; y: number } }).__mouseCanvas = { x, y };
-
-    if (dragging && current) {
-      updateCurrent((d) => ({
-        ...d,
-        nodes: d.nodes.map((n) =>
-          n.id === dragging.nodeId ? { ...n, x: x - dragging.offX, y: y - dragging.offY } : n
-        ),
-      }));
-    } else if (panning) {
-      setPan({
-        x: panning.panX + (e.clientX - panning.startX),
-        y: panning.panY + (e.clientY - panning.startY),
+  const fetchPreview = useCallback(async (nodeId: string, url: string) => {
+    setLoadingPreviews((s) => new Set(s).add(nodeId));
+    try {
+      const response = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+      const preview = await response.json();
+      if (!response.ok || preview.error) return;
+      setCurrent((prev) =>
+        prev
+          ? {
+              ...prev,
+              nodes: prev.nodes.map((n) => (n.id === nodeId && n.data?.url === url ? { ...n, data: { ...n.data, preview } } : n)),
+            }
+          : prev
+      );
+    } catch {
+      // Offline or blocked: the card still shows the link itself.
+    } finally {
+      setLoadingPreviews((s) => {
+        const next = new Set(s);
+        next.delete(nodeId);
+        return next;
       });
     }
-  }
+  }, []);
 
-  function handleMouseUp() {
-    setDragging(null);
-    setPanning(null);
-  }
-
-  function handleWheel(e: React.WheelEvent) {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.2, Math.min(3, zoom * delta));
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (rect) {
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      setPan({
-        x: mx - ((mx - pan.x) / zoom) * newZoom,
-        y: my - ((my - pan.y) / zoom) * newZoom,
-      });
-    }
-    setZoom(newZoom);
-  }
-
-  function handleDoubleClick(e: React.MouseEvent) {
-    const { x, y } = screenToCanvas(e.clientX, e.clientY);
-    const node = hitTestNode(x, y);
-    if (node) {
-      setEditingNodeId(node.id);
-      setEditingEdgeId(null);
-      setEditText(node.label);
-      return;
-    }
-    const edge = hitTestEdge(x, y);
-    if (edge) {
-      setEditingEdgeId(edge.id);
+  const commitNode = useCallback(
+    (id: string, patch: Partial<DiagramNode>) => {
+      updateNode(id, patch);
       setEditingNodeId(null);
-      setEditText(edge.label || "");
-    }
-  }
+      const url = patch.data?.url;
+      if (typeof url === "string" && !patch.data?.preview) void fetchPreview(id, url);
+    },
+    [updateNode, fetchPreview]
+  );
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (editingNodeId || editingEdgeId) return;
-    if ((e.target as HTMLElement).closest("input, select, textarea")) return;
-    if (e.key === "Delete" || e.key === "Backspace") {
-      if (selectedNodeId) {
-        updateCurrent((d) => ({
-          ...d,
-          nodes: d.nodes.filter((n) => n.id !== selectedNodeId),
-          edges: d.edges.filter((edge) => edge.from !== selectedNodeId && edge.to !== selectedNodeId),
-        }));
-        setSelectedNodeId(null);
-      }
-      if (selectedEdgeId) {
-        updateCurrent((d) => ({
-          ...d,
-          edges: d.edges.filter((edge) => edge.id !== selectedEdgeId),
-        }));
-        setSelectedEdgeId(null);
-      }
-    }
-    if (e.key === "Escape") {
-      setConnectFrom(null);
-      setMode("select");
-    }
-  }
+  const stopEditing = useCallback(() => setEditingNodeId(null), []);
+  const startEditing = useCallback((id: string) => {
+    setSelectedNodeId(id);
+    setEditingNodeId(id);
+  }, []);
 
-  function commitEdit() {
-    if (editingNodeId) {
-      updateCurrent((d) => ({
-        ...d,
-        nodes: d.nodes.map((n) => (n.id === editingNodeId ? { ...n, label: editText } : n)),
-      }));
-      setEditingNodeId(null);
-    }
-    if (editingEdgeId) {
-      updateCurrent((d) => ({
-        ...d,
-        edges: d.edges.map((edge) => (edge.id === editingEdgeId ? { ...edge, label: editText } : edge)),
-      }));
-      setEditingEdgeId(null);
-    }
-  }
+  const pickImage = useCallback((replaceId: string | null, at: Point | null = null) => {
+    imageTarget.current = { replaceId, at };
+    fileInputRef.current?.click();
+  }, []);
+  const pickImageFor = useCallback((id: string) => pickImage(id), [pickImage]);
 
-  // --- Actions ---
-  function addNode(type: DiagramNode["type"]) {
-    const cx = (-pan.x + (containerRef.current?.clientWidth || 600) / 2) / zoom;
-    const cy = (-pan.y + (containerRef.current?.clientHeight || 400) / 2) / zoom;
+  function addNode(type: NodeType, at?: Point, extra: Partial<DiagramNode> = {}): DiagramNode {
+    const size = { ...defaultSize(type), ...(extra.width ? { width: extra.width } : {}) };
+    const center = at ?? viewportCenter();
+    const cascade = at ? 0 : ((current?.nodes.length ?? 0) % 6) * 20;
     const node: DiagramNode = {
       id: uuid(),
       type,
-      x: cx - 70,
-      y: cy - 28,
-      width: 140,
-      height: 56,
-      label: NODE_LABELS[type],
+      label: isFlowShape(type) ? NODE_LABELS[type] : type === "checklist" ? "To-do" : type === "group" ? "Group" : "",
+      ...extra,
+      x: Math.round(center.x - size.width / 2 + cascade),
+      y: Math.round(center.y - size.height / 2 + cascade),
+      ...size,
     };
-    updateCurrent((d) => ({ ...d, nodes: [...d.nodes, node] }));
+    updateCurrent((d) => (type === "group" ? { ...d, nodes: [node, ...d.nodes] } : { ...d, nodes: [...d.nodes, node] }));
     setSelectedNodeId(node.id);
-    setShowNodeMenu(false);
+    setSelectedEdgeId(null);
+    return node;
+  }
+
+  function addFromMenu(type: NodeType) {
+    if (type === "image") return pickImage(null);
+    if (type === "asset") return setAssetPicker({ replaceId: null });
+    const node = addNode(type);
+    if (type === "note" || type === "checklist" || type === "link") setEditingNodeId(node.id);
+  }
+
+  async function addImages(files: File[], at: Point) {
+    for (const [index, file] of files.entries()) {
+      try {
+        const { src, aspect } = await readImageFile(file);
+        const offset = index * 24;
+        addNode("image", { x: at.x + offset, y: at.y + offset }, { width: aspect < 1 ? 200 : 280, data: { src, aspect } });
+      } catch (error) {
+        showToast({ message: error instanceof Error ? error.message : "Could not add that image" });
+      }
+    }
+  }
+
+  async function replaceImage(nodeId: string, file: File) {
+    try {
+      const { src, aspect } = await readImageFile(file);
+      setCurrent((prev) =>
+        prev ? { ...prev, nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, src, aspect } } : n)) } : prev
+      );
+    } catch (error) {
+      showToast({ message: error instanceof Error ? error.message : "Could not use that image" });
+    }
+  }
+
+  function onFilesChosen(files: File[]) {
+    const { replaceId, at } = imageTarget.current;
+    if (replaceId && files[0]) void replaceImage(replaceId, files[0]);
+    else if (files.length) void addImages(files, at ?? viewportCenter());
+  }
+
+  function addImageFromUrl(url: string, at: Point) {
+    const img = new Image();
+    img.onload = () => addNode("image", at, { width: 280, data: { src: url, aspect: img.naturalWidth / img.naturalHeight || 1 } });
+    img.onerror = () => addLink(url, at);
+    img.src = url;
+  }
+
+  function addLink(url: string, at: Point) {
+    const node = addNode("link", at, { data: { url } });
+    void fetchPreview(node.id, url);
+  }
+
+  /** Pasted or dropped text: a link becomes a link (or image) card, anything else a note. */
+  function addFromText(text: string, at: Point) {
+    const url = normalizeUrl(text);
+    if (url && /^(https?:\/\/|www\.)/i.test(text.trim())) {
+      if (isImageUrl(url)) addImageFromUrl(url, at);
+      else addLink(url, at);
+      return;
+    }
+    addNode("note", at, { label: text.trim().slice(0, 5000) });
+  }
+
+  function pickAsset(ref: AssetRef) {
+    const name = getAsset(projectId, ref.type, ref.id)?.name ?? ASSET_KINDS[ref.type].label;
+    const replaceId = assetPicker?.replaceId;
+    setAssetPicker(null);
+    if (replaceId) updateNode(replaceId, { label: name, data: { asset: ref } });
+    else addNode("asset", undefined, { label: name, data: { asset: ref } });
+  }
+
+  function deleteSelection() {
+    if (selectedNodeId) {
+      updateCurrent((d) => ({
+        ...d,
+        nodes: d.nodes.filter((n) => n.id !== selectedNodeId),
+        edges: d.edges.filter((edge) => edge.from !== selectedNodeId && edge.to !== selectedNodeId),
+      }));
+      setSelectedNodeId(null);
+    }
+    if (selectedEdgeId) {
+      updateCurrent((d) => ({ ...d, edges: d.edges.filter((edge) => edge.id !== selectedEdgeId) }));
+      setSelectedEdgeId(null);
+    }
+  }
+
+  function addEdge(from: string, to: string) {
+    if (from === to) return;
+    updateCurrent((d) => ({ ...d, edges: [...d.edges, { id: uuid(), from, to, label: "", type: "arrow" }] }));
+  }
+
+  function stackGroup(groupId: string) {
+    if (!current) return;
+    const group = current.nodes.find((n) => n.id === groupId);
+    if (!group) return;
+    const members = membersOf(group, current.nodes);
+    const cards = current.nodes.filter((n) => members.includes(n.id)).map((n) => ({ id: n.id, ...rectOf(n) }));
+    const { positions, width, height } = stackColumn(rectOf(group), cards);
+    updateCurrent((d) => ({
+      ...d,
+      nodes: d.nodes.map((n) => (n.id === groupId ? { ...n, width, height } : positions.has(n.id) ? { ...n, ...positions.get(n.id)! } : n)),
+    }));
+  }
+
+  function membersOf(group: DiagramNode, nodes: DiagramNode[]): string[] {
+    const others = nodes.filter((n) => n.id !== group.id).map((n) => ({ id: n.id, ...rectOf(n) }));
+    return idsInside(rectOf(group), others);
   }
 
   function setNodeAsset(nodeId: string, value: string) {
+    const node = current?.nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    const data = { ...(node.data ?? {}) };
+    if (value) {
+      const [type, ...rest] = value.split(":");
+      data.asset = { type, id: rest.join(":") };
+    } else {
+      delete data.asset;
+    }
+    updateNode(nodeId, { data });
+  }
+
+  // --- Pointer input ---
+  function isDoubleTap(key: string): boolean {
+    const now = Date.now();
+    const isDouble = lastTap.current.key === key && now - lastTap.current.time < DOUBLE_TAP_MS;
+    lastTap.current = isDouble ? { key: "", time: 0 } : { key, time: now };
+    return isDouble;
+  }
+
+  function startPinch() {
+    const [a, b] = [...pointers.current.values()];
+    const drag = interaction.current;
+    if (drag?.kind === "drag" && drag.hasMoved) restorePositions(drag.origins);
+    longPress.cancel();
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    interaction.current = { kind: "pinch", distance: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom: view.current.zoom, anchor: toBoard(mid.x, mid.y) };
+    setIsInteracting(false);
+  }
+
+  function pressNode(nodeId: string, point: Point, e: React.PointerEvent) {
+    const node = current?.nodes.find((n) => n.id === nodeId);
+    if (!node || !current) return;
+    if (mode === "connect") {
+      if (connectFrom && connectFrom !== nodeId) {
+        addEdge(connectFrom, nodeId);
+        setConnectFrom(null);
+        setConnectDraft(null);
+      } else setConnectFrom(nodeId);
+      return;
+    }
+    // Start editing after the browser's own pointer-down focus change, or it would blur the new editor at once.
+    if (isDoubleTap(nodeId)) return void setTimeout(() => startEditing(nodeId));
+    setSelectedNodeId(nodeId);
+    setSelectedEdgeId(null);
+    const ids = node.type === "group" ? [nodeId, ...membersOf(node, current.nodes)] : [nodeId];
+    const origins = new Map(current.nodes.filter((n) => ids.includes(n.id)).map((n) => [n.id, { x: n.x, y: n.y }]));
+    interaction.current = { kind: "drag", nodeId, start: point, origins, hasMoved: false };
+    const asset = nodeAsset(node);
+    pressedNode.current = asset ? { node, asset } : null;
+    if (asset) longPress.down({ x: e.clientX, y: e.clientY, pointerType: e.pointerType });
+  }
+
+  function pressEdge(edgeId: string) {
+    setSelectedEdgeId(edgeId);
+    setSelectedNodeId(null);
+    if (isDoubleTap(`edge:${edgeId}`)) setTimeout(() => setEditingEdgeId(edgeId));
+  }
+
+  function startHandleDrag(handle: "resize" | "connect", nodeId: string, point: Point) {
+    const node = current?.nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    if (handle === "connect") {
+      interaction.current = { kind: "connect", fromId: nodeId };
+      setConnectDraft({ fromId: nodeId, to: point });
+      return;
+    }
+    const { width, height } = rectOf(node);
+    interaction.current = { kind: "resize", nodeId, start: point, width, height };
+    setIsInteracting(true);
+  }
+
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (closestData(e.target, "data-card-control") !== null) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 2) return startPinch();
+    hasPressFired.current = false;
+    pressedNode.current = null;
+    if (editingNodeId || editingEdgeId) (document.activeElement as HTMLElement | null)?.blur();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const point = toBoard(e.clientX, e.clientY);
+    const nodeId = closestData(e.target, "data-node-id");
+    if (nodeId && closestData(e.target, "data-resize-handle") !== null) return startHandleDrag("resize", nodeId, point);
+    if (nodeId && closestData(e.target, "data-connect-handle") !== null) return startHandleDrag("connect", nodeId, point);
+    if (nodeId) return pressNode(nodeId, point, e);
+    const edgeId = closestData(e.target, "data-edge-id");
+    if (edgeId) return pressEdge(edgeId);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    if (mode === "connect") {
+      setConnectFrom(null);
+      setConnectDraft(null);
+    }
+    interaction.current = { kind: "pan", start: { x: e.clientX, y: e.clientY }, pan: view.current.pan };
+  }
+
+  function moveDrag(drag: Extract<Interaction, { kind: "drag" }>, point: Point) {
+    const dx = point.x - drag.start.x;
+    const dy = point.y - drag.start.y;
+    if (!drag.hasMoved) {
+      if (Math.hypot(dx, dy) * view.current.zoom < DRAG_THRESHOLD_PX) return;
+      drag.hasMoved = true;
+      setIsInteracting(true);
+    }
     updateCurrent((d) => ({
       ...d,
       nodes: d.nodes.map((n) => {
-        if (n.id !== nodeId) return n;
-        const data = { ...(n.data ?? {}) };
-        if (value) {
-          const [type, ...rest] = value.split(":");
-          data.asset = { type, id: rest.join(":") };
-        } else {
-          delete data.asset;
-        }
-        return { ...n, data };
+        const origin = drag.origins.get(n.id);
+        return origin ? { ...n, x: Math.round(origin.x + dx), y: Math.round(origin.y + dy) } : n;
       }),
     }));
   }
 
+  function moveResize(resize: Extract<Interaction, { kind: "resize" }>, point: Point) {
+    const node = current?.nodes.find((n) => n.id === resize.nodeId);
+    if (!node) return;
+    const width = Math.max(node.type === "group" ? 160 : 80, Math.round(resize.width + point.x - resize.start.x));
+    const height = isAutoHeight(node.type) ? node.height : Math.max(40, Math.round(resize.height + point.y - resize.start.y));
+    updateNode(node.id, { width, height });
+  }
+
+  function movePinch(pinch: Extract<Interaction, { kind: "pinch" }>) {
+    const [a, b] = [...pointers.current.values()];
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!a || !b || !rect) return;
+    const z = clampZoom((pinch.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / pinch.distance);
+    const mid = { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top };
+    setZoom(z);
+    setPan({ x: mid.x - pinch.anchor.x * z, y: mid.y - pinch.anchor.y * z });
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    longPress.move({ x: e.clientX, y: e.clientY });
+    const point = toBoard(e.clientX, e.clientY);
+    const active = interaction.current;
+    if (!active) {
+      if (mode === "connect" && connectFrom) setConnectDraft({ fromId: connectFrom, to: point });
+      return;
+    }
+    if (active.kind === "drag") moveDrag(active, point);
+    else if (active.kind === "resize") moveResize(active, point);
+    else if (active.kind === "connect") setConnectDraft({ fromId: active.fromId, to: point });
+    else if (active.kind === "pinch") movePinch(active);
+    else setPan({ x: active.pan.x + e.clientX - active.start.x, y: active.pan.y + e.clientY - active.start.y });
+  }
+
+  function handlePointerEnd(e: React.PointerEvent<HTMLDivElement>) {
+    pointers.current.delete(e.pointerId);
+    longPress.up();
+    const active = interaction.current;
+    if (active?.kind === "connect" && e.type !== "pointercancel") {
+      const targetId = closestData(document.elementFromPoint(e.clientX, e.clientY), "data-node-id");
+      if (targetId) addEdge(active.fromId, targetId);
+    }
+    if (active?.kind === "connect") setConnectDraft(null);
+    if (active?.kind === "pinch" && pointers.current.size > 0) return;
+    interaction.current = null;
+    setIsInteracting(false);
+  }
+
+  function openNodeMenu(e: React.MouseEvent<HTMLDivElement>) {
+    const nodeId = closestData(e.target, "data-node-id");
+    const node = nodeId ? current?.nodes.find((n) => n.id === nodeId) : undefined;
+    const asset = node && nodeAsset(node);
+    if (!asset || closestData(e.target, "data-card-control") !== null) return;
+    e.preventDefault();
+    if (!hasPressFired.current) openAssetMenu({ x: e.clientX, y: e.clientY }, asset, null);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (editingNodeId || editingEdgeId) return;
+    if (isTextField(e.target)) return;
+    if (e.key === "Delete" || e.key === "Backspace") deleteSelection();
+    if (e.key === "Escape") {
+      setConnectFrom(null);
+      setConnectDraft(null);
+      setMode("select");
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+    }
+  }
+
+  // Paste an image, a link or text straight onto the open board.
+  useEffect(() => {
+    if (showList) return;
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTextField(e.target) || isTextField(document.activeElement)) return;
+      const files = imageFilesFrom(e.clipboardData);
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (!files.length && !text.trim()) return;
+      e.preventDefault();
+      if (files.length) void addImages(files, viewportCenter());
+      else addFromText(text, viewportCenter());
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  });
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    // Always swallow the drop, so a dropped PDF or other file never navigates away from the board.
+    e.preventDefault();
+    const files = imageFilesFrom(e.dataTransfer);
+    const text = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+    if (!files.length && !text) return;
+    const at = toBoard(e.clientX, e.clientY);
+    if (files.length) void addImages(files, at);
+    else addFromText(text.split("\n")[0], at);
+  }
+
+  // --- Diagrams ---
   function loadDiagram(d: Diagram) {
     setCurrent(d);
     setShowList(false);
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
+    setEditingNodeId(null);
     setPan({ x: 0, y: 0 });
     setZoom(1);
   }
@@ -732,12 +694,7 @@ export default function DiagramsPage() {
     };
     storage.save("diagrams", d, projectId);
     setDiagrams(storage.getAll("diagrams", projectId));
-    setCurrent(d);
-    setShowList(false);
-    setSelectedNodeId(null);
-    setSelectedEdgeId(null);
-    setPan({ x: 0, y: 0 });
-    setZoom(1);
+    loadDiagram(d);
   }
 
   function deleteDiagram(id: string) {
@@ -756,17 +713,16 @@ export default function DiagramsPage() {
       ...d,
       edges: d.edges.map((edge) => {
         if (edge.id !== selectedEdgeId) return edge;
-        const types: DiagramEdge["type"][] = ["arrow", "dashed", "line"];
-        const idx = types.indexOf(edge.type);
-        return { ...edge, type: types[(idx + 1) % types.length] };
+        const types = ["arrow", "dashed", "line"] as const;
+        return { ...edge, type: types[(types.indexOf(edge.type) + 1) % types.length] };
       }),
     }));
   }
 
-  function exportPng() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    downloadFile(`${current?.name || "diagram"}.png`, canvas.toDataURL("image/png"));
+  async function exportPng() {
+    if (!current) return;
+    const canvas = await renderDiagramPng({ diagram: current, rectOf, describeAsset: (node) => describeAsset(projectId, node) });
+    downloadFile(`${current.name || "diagram"}.png`, canvas.toDataURL("image/png"));
   }
 
   function exportJson() {
@@ -776,60 +732,16 @@ export default function DiagramsPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function startNodePress(e: React.PointerEvent<HTMLCanvasElement>) {
-    pressedNode.current = null;
-    const { x, y } = screenToCanvas(e.clientX, e.clientY);
-    const node = hitTestNode(x, y);
-    const asset = node && nodeAsset(node);
-    if (node && asset) pressedNode.current = { node, asset };
-    if (pressedNode.current && mode !== "connect") longPress.down({ x: e.clientX, y: e.clientY, pointerType: e.pointerType });
-  }
-
-  function openNodeMenu(e: React.MouseEvent<HTMLCanvasElement>) {
-    const { x, y } = screenToCanvas(e.clientX, e.clientY);
-    const node = hitTestNode(x, y);
-    const asset = node && nodeAsset(node);
-    if (!asset) return;
-    e.preventDefault();
-    if (!hasPressFired.current) openAssetMenu({ x: e.clientX, y: e.clientY }, asset, null);
-  }
-
-  function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
-    longPress.move({ x: e.clientX, y: e.clientY });
-    handleMouseMove(e);
-  }
-
-  function handlePointerEnd() {
-    longPress.up();
-    handleMouseUp();
-  }
-
-  // Touch has no double-click, so two quick taps open the label editor.
-  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    hasPressFired.current = false;
-    startNodePress(e);
-    if (e.pointerType === "touch") {
-      const now = Date.now();
-      if (now - lastTap.current < 320) {
-        lastTap.current = 0;
-        handleDoubleClick(e);
-        return;
-      }
-      lastTap.current = now;
-    }
-    handleMouseDown(e);
-  }
-
   // --- List view ---
   if (showList) {
     return (
       <div className="p-6 md:p-10 max-w-3xl mx-auto">
-        <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center justify-between gap-3 mb-1">
           <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
             Diagrams
           </h1>
           <div className="flex items-center gap-2 shrink-0">
+            <HelpButton topic="diagrams" />
             <PasteButton type="diagram" />
             <button
               onClick={newDiagram}
@@ -841,6 +753,9 @@ export default function DiagramsPage() {
             </button>
           </div>
         </div>
+        <p className="text-sm mb-3" style={{ color: "var(--text-secondary)" }}>
+          Boards for moodboards, story flow, level planning and reference collections, plus flow charts and state machines.
+        </p>
         <ExamplesBar projectId={projectId} collections={["diagrams"]} className="mb-6" />
         {diagrams.length === 0 ? (
           <div {...pasteTriggerProps("diagram")} className="text-center py-20 rounded-xl border border-dashed" style={{ borderColor: "var(--border)" }}>
@@ -848,8 +763,8 @@ export default function DiagramsPage() {
             <p className="text-lg font-medium mb-2" style={{ color: "var(--text-primary)" }}>
               No diagrams yet
             </p>
-            <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
-              Plan your game logic with flow charts and state machines
+            <p className="text-sm mb-4 px-4" style={{ color: "var(--text-secondary)" }}>
+              Pin up notes, images, videos, links and to-dos, or plan game logic with flow charts
             </p>
             <div className="flex justify-center gap-2">
               <button
@@ -885,7 +800,7 @@ export default function DiagramsPage() {
                 <div>
                   <span className="font-medium" style={{ color: "var(--text-primary)" }}>{d.name}</span>
                   <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                    {d.nodes.length} nodes · {d.edges.length} edges
+                    {d.nodes.length} cards · {d.edges.length} lines
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -910,9 +825,23 @@ export default function DiagramsPage() {
   }
 
   const selectedNode = current?.nodes.find((n) => n.id === selectedNodeId) ?? null;
-  const selectedAsset = selectedNode ? nodeAsset(selectedNode) : undefined;
-  const selectedAssetName = selectedAsset ? getAsset(projectId, selectedAsset.type, selectedAsset.id)?.name : undefined;
-  const projectAssets = selectedNode ? listAssets(projectId) : [];
+  const groups = current?.nodes.filter((n) => n.type === "group") ?? [];
+  const cards = current?.nodes.filter((n) => n.type !== "group") ?? [];
+  const renderCard = (node: DiagramNode) => (
+    <DiagramCard
+      key={node.id}
+      node={node}
+      projectId={projectId}
+      isSelected={node.id === selectedNodeId}
+      isEditing={node.id === editingNodeId}
+      isConnectSource={node.id === connectFrom || node.id === connectDraft?.fromId}
+      isLoading={loadingPreviews.has(node.id) && !linkPreview(node).title && Boolean(linkUrl(node))}
+      onMeasure={onMeasure}
+      onCommit={commitNode}
+      onStopEditing={stopEditing}
+      onPickImage={pickImageFor}
+    />
+  );
 
   // --- Editor view ---
   return (
@@ -952,7 +881,7 @@ export default function DiagramsPage() {
         </div>
         <div className="flex items-center gap-1 max-md:flex-wrap">
           <button
-            onClick={() => { setMode("select"); setConnectFrom(null); }}
+            onClick={() => { setMode("select"); setConnectFrom(null); setConnectDraft(null); }}
             className="p-1.5 rounded text-xs"
             style={{
               background: mode === "select" ? "var(--bg-hover)" : "transparent",
@@ -970,47 +899,15 @@ export default function DiagramsPage() {
               background: mode === "connect" ? "var(--bg-hover)" : "transparent",
               color: mode === "connect" ? "var(--text-primary)" : "var(--text-secondary)",
             }}
-            title="Connect nodes: click the first node, then the second"
-            aria-label="Connect nodes"
+            title="Connect cards: click the first card, then the second"
+            aria-label="Connect cards"
           >
             <Link2 className="w-4 h-4" />
           </button>
 
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
 
-          {/* Add node dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowNodeMenu(!showNodeMenu)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs"
-              style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Node
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            {showNodeMenu && (
-              <div
-                className="absolute top-full left-0 mt-1 py-1 rounded-lg border z-20 w-40"
-                style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
-              >
-                {(["state", "action", "condition", "event", "note"] as DiagramNode["type"][]).map((t) => {
-                  const Icon = NODE_ICONS[t];
-                  return (
-                    <button
-                      key={t}
-                      onClick={() => addNode(t)}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left hover:bg-[var(--bg-hover)]"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      <Icon className="w-4 h-4" style={{ color: NODE_COLORS[t] }} />
-                      {NODE_LABELS[t]}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <AddCardMenu onPick={addFromMenu} />
 
           {selectedEdgeId && (
             <button
@@ -1026,120 +923,89 @@ export default function DiagramsPage() {
 
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
 
-          <button onClick={() => setZoom((z) => Math.min(3, z * 1.2))} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Zoom in" aria-label="Zoom in">
+          <button onClick={() => zoomBy(1.2)} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Zoom in" aria-label="Zoom in">
             <ZoomIn className="w-4 h-4" />
           </button>
-          <button onClick={() => setZoom((z) => Math.max(0.2, z / 1.2))} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Zoom out" aria-label="Zoom out">
+          <button onClick={() => zoomBy(1 / 1.2)} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Zoom out" aria-label="Zoom out">
             <ZoomOut className="w-4 h-4" />
           </button>
-          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Reset view" aria-label="Reset view">
-            <RotateCcw className="w-4 h-4" />
+          <button onClick={fitToCards} className="p-1.5 rounded" style={{ color: "var(--text-secondary)" }} title="Fit all cards in view" aria-label="Fit all cards in view">
+            <Maximize className="w-4 h-4" />
           </button>
 
           <div className="w-px h-5 mx-1" style={{ background: "var(--border)" }} />
 
           <SaveIndicator state={autosave.state} className="px-1" />
+          <HelpButton topic="diagrams" />
           <ExportMenu
             items={[
-              { label: "PNG image", description: "The diagram as you see it", onClick: exportPng },
-              { label: "JSON", description: "Nodes and links, to re-import or use in code", onClick: exportJson },
+              { label: "PNG image", description: "The whole board as a picture", onClick: () => void exportPng() },
+              { label: "JSON", description: "Cards and lines, to re-import or use in code", onClick: exportJson },
             ]}
           />
         </div>
       </div>
 
-      {/* Canvas */}
-      <div ref={containerRef} className="flex-1 relative overflow-hidden">
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full outline-none"
-          style={{ cursor: mode === "connect" ? "crosshair" : dragging ? "grabbing" : panning ? "grabbing" : "default", touchAction: "none" }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerEnd}
-          onPointerCancel={handlePointerEnd}
-          onContextMenu={openNodeMenu}
-          onWheel={handleWheel}
-          onDoubleClick={handleDoubleClick}
-        />
+      {/* Board */}
+      <div
+        ref={viewportRef}
+        className="flex-1 relative overflow-hidden select-none outline-none"
+        style={{
+          cursor: mode === "connect" ? "crosshair" : isInteracting ? "grabbing" : "default",
+          touchAction: "none",
+          background: "var(--bg-primary)",
+          backgroundImage: "linear-gradient(#1a1a28 1px, transparent 1px), linear-gradient(90deg, #1a1a28 1px, transparent 1px)",
+          backgroundSize: `${GRID * zoom}px ${GRID * zoom}px`,
+          backgroundPosition: `${pan.x}px ${pan.y}px`,
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        onContextMenu={openNodeMenu}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+      >
+        <div className="absolute left-0 top-0" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
+          {groups.map(renderCard)}
+          {current && (
+            <EdgeLayer
+              nodes={current.nodes}
+              edges={current.edges}
+              rectOf={rectOf}
+              selectedEdgeId={selectedEdgeId}
+              editingEdgeId={editingEdgeId}
+              draft={connectDraft}
+              onLabelCommit={(edgeId, label) => {
+                updateCurrent((d) => ({ ...d, edges: d.edges.map((edge) => (edge.id === edgeId ? { ...edge, label } : edge)) }));
+                setEditingEdgeId(null);
+              }}
+              onLabelCancel={() => setEditingEdgeId(null)}
+            />
+          )}
+          {cards.map(renderCard)}
+        </div>
 
-        {/* Inline text editor overlay */}
-        {(editingNodeId || editingEdgeId) && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/40" onClick={commitEdit}>
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="p-4 rounded-xl border"
-              style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
-            >
-              <input
-                autoFocus
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") { setEditingNodeId(null); setEditingEdgeId(null); } }}
-                className="px-3 py-2 rounded-lg text-sm outline-none w-60"
-                style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-              />
-              <div className="flex justify-end mt-2 gap-2">
-                <button onClick={() => { setEditingNodeId(null); setEditingEdgeId(null); }} className="px-3 py-1 rounded text-xs" style={{ color: "var(--text-secondary)" }}>Cancel</button>
-                <button onClick={commitEdit} className="px-3 py-1 rounded text-xs" style={{ background: "var(--accent)", color: "white" }}>OK</button>
-              </div>
-            </div>
-          </div>
+        {selectedNode && !editingNodeId && (
+          <SelectionPanel
+            node={selectedNode}
+            projectId={projectId}
+            onColor={(color) => updateNode(selectedNode.id, { color })}
+            onLinkAsset={(value) => setNodeAsset(selectedNode.id, value)}
+            onStack={() => stackGroup(selectedNode.id)}
+            onEdit={() => startEditing(selectedNode.id)}
+            onReplaceImage={() => pickImage(selectedNode.id)}
+            onChangeAsset={() => setAssetPicker({ replaceId: selectedNode.id })}
+            onDelete={deleteSelection}
+          />
         )}
 
-        {/* Selected node: linked asset */}
-        {selectedNode && (
-          <div
-            className="absolute top-3 right-3 z-10 w-64 p-3 rounded-xl border space-y-2"
-            style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
-          >
-            <div className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
-              {NODE_LABELS[selectedNode.type]}: {selectedNode.label}
-            </div>
-            <label className="block text-xs" style={{ color: "var(--text-secondary)" }}>
-              Linked asset
-              <select
-                value={selectedAsset ? `${selectedAsset.type}:${selectedAsset.id}` : ""}
-                onChange={(e) => setNodeAsset(selectedNode.id, e.target.value)}
-                className="mt-1 w-full px-2 py-1 rounded text-xs outline-none"
-                style={{ background: "var(--bg-primary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-              >
-                <option value="">None</option>
-                {ASSET_TYPES.map((t) => {
-                  const group = projectAssets.filter((a) => a.type === t);
-                  if (!group.length) return null;
-                  return (
-                    <optgroup key={t} label={ASSET_KINDS[t].label}>
-                      {group.map((a) => (
-                        <option key={a.id} value={`${a.type}:${a.id}`}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
-              </select>
-            </label>
-            {selectedAsset && (selectedAssetName ? (
-              <Link
-                href={assetHref(projectId, selectedAsset.type, selectedAsset.id)}
-                className="flex items-center gap-1 text-xs hover:underline"
-                style={{ color: "var(--accent)" }}
-              >
-                <ExternalLink className="w-3 h-3" />
-                Open {selectedAssetName}
-              </Link>
-            ) : (
-              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Linked asset was deleted</span>
-            ))}
-          </div>
-        )}
-
-        {/* Empty diagram hint */}
+        {/* Empty board hint */}
         {current && current.nodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-6">
             <p className="text-sm text-center max-w-sm" style={{ color: "var(--text-secondary)" }}>
-              Empty diagram. Use <b style={{ color: "var(--text-primary)" }}>Add Node</b> to place a box, then the link tool to connect two boxes. Double-click a box or line to rename it.
+              Empty board. Use <b style={{ color: "var(--text-primary)" }}>Add</b> for notes, to-dos, images, links, asset cards
+              or flow-chart shapes, or paste and drop pictures and links straight onto the board. Double-click a card to edit it.
             </p>
           </div>
         )}
@@ -1150,10 +1016,38 @@ export default function DiagramsPage() {
             className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-xs text-center max-md:w-[90%]"
             style={{ background: "var(--bg-card)", color: "var(--accent)", border: "1px solid var(--accent)" }}
           >
-            {connectFrom ? "Now click the second node" : "Connect: click the first node, then the second"} · Esc to cancel
+            {connectFrom ? "Now click the second card" : "Connect: click the first card, then the second"} · Esc to cancel
           </div>
         )}
+
+        <div
+          className="absolute right-3 bottom-3 px-2 py-1 rounded text-[11px] font-mono pointer-events-none max-md:hidden"
+          style={{ background: "var(--bg-card)", color: "var(--text-secondary)" }}
+        >
+          {Math.round(zoom * 100)}%
+        </div>
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          onFilesChosen(Array.from(e.target.files ?? []));
+          e.target.value = "";
+        }}
+      />
+      {assetPicker && current && (
+        <AssetPickerModal
+          projectId={projectId}
+          title={assetPicker.replaceId ? "Change the asset on this card" : "Add a studio asset to the board"}
+          exclude={[{ type: "diagram", id: current.id }]}
+          onPick={pickAsset}
+          onClose={() => setAssetPicker(null)}
+        />
+      )}
     </div>
   );
 }

@@ -41,8 +41,8 @@ export type ClonePlacement = "in-place" | "backlog";
 export type ClipboardPayload = { kind: "text"; text: string } | { kind: "png"; dataUrl: string };
 
 const TITLED_TYPES: AssetType[] = ["story", "note", "issue"];
-const DIAGRAM_NODE_WIDTH = 140;
-const DIAGRAM_NODE_HEIGHT = 56;
+const DIAGRAM_NODE_WIDTH = 220;
+const DIAGRAM_NODE_HEIGHT = 64;
 const DIAGRAM_NODE_GAP = 40;
 const ISSUE_ORDER_STEP = 1000;
 
@@ -175,7 +175,7 @@ export function deleteAsset(projectId: string, ref: AssetRef): void {
 function assetNode(projectId: string, ref: AssetRef, x: number, y: number): DiagramNode {
   return {
     id: uuid(),
-    type: "custom",
+    type: "asset",
     x,
     y,
     width: DIAGRAM_NODE_WIDTH,

@@ -1,5 +1,6 @@
 import type { DiagramEdge, DiagramNode, DialogueNode } from "@/types";
 import type { ExampleModule } from "./types";
+import { diagramBoardExamples } from "./diagram-boards";
 
 // Example assets for: diagrams, dialogues — the logic and conversations of "Pip's Quest".
 
@@ -24,9 +25,10 @@ function diagram(nodes: NodeSpec[], edges: EdgeSpec[]) {
 const diagrams: ExampleModule = {
   collection: "diagrams",
   legacyNames: ["Player State Machine (Example)"],
-  build: ({ id }) => [
+  build: (ctx) => [
+    ...diagramBoardExamples(ctx),
     {
-      id: id("player-states"),
+      id: ctx.id("player-states"),
       name: "Player States",
       ...diagram(
         [
@@ -50,7 +52,7 @@ const diagrams: ExampleModule = {
       ),
     },
     {
-      id: id("enemy-ai"),
+      id: ctx.id("enemy-ai"),
       name: "Slime AI",
       ...diagram(
         [
@@ -74,7 +76,7 @@ const diagrams: ExampleModule = {
       ),
     },
     {
-      id: id("screen-flow"),
+      id: ctx.id("screen-flow"),
       name: "Screen Flow",
       ...diagram(
         [

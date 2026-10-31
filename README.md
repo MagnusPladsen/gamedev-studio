@@ -11,7 +11,7 @@
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=nextdotjs)](https://nextjs.org)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-34d399?style=flat-square)](#contributing)
 
-A free, open source game development toolkit. Create pixel art, music, sound effects, tilemaps, dialogue trees, story worlds and logic diagrams, all in one app where everything links together.
+A free, open source game development toolkit. Create pixel art, music, sound effects, tilemaps, dialogue trees, story worlds, moodboards and diagrams, all in one app where everything links together.
 
 **No watermarks. No paywalls. No account required.** Everything you make is yours.
 
@@ -29,7 +29,7 @@ A free, open source game development toolkit. Create pixel art, music, sound eff
 | **Music** | Piano-roll composer with melody, harmony, bass and drum channels, zoomable. WAV export |
 | **SFX** | Retro sound effect generator (jump, laser, coin, explosion…) with sliders and WAV export |
 | **Tilemap** | Paint levels with the sprites you drew, on multiple layers. PNG export |
-| **Diagrams** | Flow charts and state machines for game logic. Nodes can point at any asset |
+| **Diagrams** | Milanote-style boards for moodboards, story flow, level planning and reference collections: notes, to-do lists, images, YouTube/Spotify/Vimeo/SoundCloud players, link previews, asset cards, groups and colours. Also flow charts and state machines |
 | **Story** | Obsidian-style wiki: `[[links]]`, hover summaries, backlinks, graph view, templates |
 | **Dialogue** | Branching conversations with choices, conditions and a play-through preview. JSON export |
 | **Palettes** | Shared colour palettes with PICO-8, Game Boy, NES and more presets |

@@ -12,6 +12,12 @@ a self-hosted copy.
 - Sprite to voxels import from Pixel Art
 - Exports: .glb, .obj + .mtl, MagicaVoxel .vox and .png, at 1 voxel = 0.1 m, Y-up; free, no watermark
 - Pip's Quest example voxel models
+- **Diagrams:** now a Milanote-style board for moodboards, story flow, level planning and reference collections.
+  New cards: notes that wrap and grow, to-do lists, images (upload, paste or drop), links with previews
+  (YouTube, Spotify, Vimeo and SoundCloud play on the board), studio asset cards and groups with "Stack as
+  column". Any card takes a colour; drag the dot on a card to connect it. Old diagrams open unchanged
+- New example boards: "Pip's Quest Moodboard" and "Mossbrook Meadow Level Plan"
+- **Help:** a `?` button on every tool page explains what it does, with quick-start steps and tips
 
 ### Database
 - New Supabase migration `supabase/migrations/20261031090000_add_models_collection.sql` adds the `models`
