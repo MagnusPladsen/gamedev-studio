@@ -17,7 +17,7 @@ import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 
 const PRESET_PALETTES: { name: string; colors: string[] }[] = [
   {
@@ -294,6 +294,7 @@ export default function PalettesPage() {
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
+                  <AssetPinButton asset={{ type: "palette", id: p.id }} label={p.name} />
                   <AssetMenuButton asset={{ type: "palette", id: p.id }} label={p.name} />
                 </div>
               </div>

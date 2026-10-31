@@ -47,7 +47,7 @@ import { COPY_FAILED_MESSAGE, useAssetMenu } from "@/components/AssetContextMenu
 import type { ContextMenuEntry } from "@/components/ContextMenu";
 import { useToast } from "@/components/Toast";
 import { copyToSystemClipboard } from "@/lib/asset-actions";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import type { Sprite, SpriteFrame } from "@/types";
 
 // ─── types ───────────────────────────────────────────────────────────
@@ -1011,6 +1011,7 @@ export default function PixelArtPage() {
             >
               <Trash2 className="w-3 h-3" />
             </button>
+            <AssetPinButton asset={{ type: "sprite", id: s.id }} label={s.name} />
             <AssetMenuButton asset={{ type: "sprite", id: s.id }} label={s.name} />
           </div>
         ))}

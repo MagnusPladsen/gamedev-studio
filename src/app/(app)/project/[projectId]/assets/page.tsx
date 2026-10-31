@@ -19,7 +19,7 @@ import { ASSET_KINDS, ASSET_TYPES, assetHref, listAssets } from "@/lib/assets";
 import { getRelated } from "@/lib/links";
 import { getAssetName, getStoredAsset } from "@/lib/asset-actions";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import { useStorageVersion } from "@/hooks/useStorage";
 import type { AssetRef, AssetType } from "@/types";
 
@@ -241,7 +241,7 @@ export default function AssetsPage() {
           {shown.map((a) => {
             const kind = ASSET_KINDS[a.type];
             return (
-              <div key={`${a.type}:${a.id}`} {...assetTriggerProps({ type: a.type, id: a.id })} className="flex items-center gap-3 px-4 py-2.5" style={{ borderColor: "var(--border)" }}>
+              <div key={`${a.type}:${a.id}`} {...assetTriggerProps({ type: a.type, id: a.id })} className="group flex items-center gap-3 px-4 py-2.5" style={{ borderColor: "var(--border)" }}>
                 {a.thumbnail ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={a.thumbnail} alt="" className="w-6 h-6 shrink-0" style={{ imageRendering: "pixelated" }} />
@@ -290,6 +290,7 @@ export default function AssetsPage() {
                     )}
                   </div>
                 )}
+                <AssetPinButton asset={{ type: a.type, id: a.id }} label={a.name} />
                 <AssetMenuButton asset={{ type: a.type, id: a.id }} label={a.name} />
               </div>
             );

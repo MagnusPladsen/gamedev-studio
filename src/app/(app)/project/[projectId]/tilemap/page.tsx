@@ -26,7 +26,7 @@ import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import { useHistory } from "@/hooks/useHistory";
 import { useAutosave } from "@/hooks/useAutosave";
 import type { TilemapData, TilemapLayer, Sprite } from "@/types";
@@ -506,6 +506,7 @@ export default function TilemapPage() {
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
+                  <AssetPinButton asset={{ type: "tilemap", id: tm.id }} label={tm.name} />
                   <AssetMenuButton asset={{ type: "tilemap", id: tm.id }} label={tm.name} />
                 </div>
               </div>

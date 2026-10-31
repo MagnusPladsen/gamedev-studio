@@ -32,7 +32,7 @@ import type { Note } from "@/types";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { useAssetMenu, type MenuTriggerProps } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 
 const ACCENT = "#a3e635";
 const SAVE_DELAY = 600;
@@ -776,12 +776,12 @@ export default function NotebookPage() {
                   const p = checklistProgress(n.content);
                   const active = draft?.id === n.id;
                   return (
-                    <div key={n.id} className="relative">
+                    <div key={n.id} className="group relative">
                       <button
                         {...assetTriggerProps({ type: "note", id: n.id })}
                         data-note-id={n.id}
                         onClick={onListClick}
-                        className="w-full text-left px-2.5 max-md:pr-9 py-2 rounded-lg mb-0.5 transition-colors hover:bg-[var(--bg-hover)]"
+                        className="w-full text-left px-2.5 max-md:pr-9 md:pr-7 py-2 rounded-lg mb-0.5 transition-colors hover:bg-[var(--bg-hover)]"
                         style={{ background: active ? "var(--bg-hover)" : undefined, boxShadow: active ? `inset 2px 0 0 ${ACCENT}` : undefined }}
                       >
                         <div className="flex items-center gap-1.5">
@@ -809,6 +809,9 @@ export default function NotebookPage() {
                       </button>
                       <div className="md:hidden absolute right-1 top-1/2 -translate-y-1/2">
                         <AssetMenuButton asset={{ type: "note", id: n.id }} label={n.title || "Untitled note"} />
+                      </div>
+                      <div className="max-md:hidden absolute right-2 top-1/2 -translate-y-1/2 flex">
+                        <AssetPinButton asset={{ type: "note", id: n.id }} label={n.title || "Untitled note"} />
                       </div>
                     </div>
                   );

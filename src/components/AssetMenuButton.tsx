@@ -1,11 +1,13 @@
 "use client";
 
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Pin } from "lucide-react";
 import type { AssetRef, AssetType } from "@/types";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { useAssetClipboard } from "@/hooks/useAssetClipboard";
 import { canPaste } from "@/lib/asset-clipboard";
 import { anchorPoint } from "@/lib/menu-position";
+import { isAssetPinned, toggleAssetPin } from "@/lib/pins";
+import { useStorageVersion } from "@/hooks/useStorage";
 
 /** Phone-only `⋯` that opens the asset's context menu. */
 export function AssetMenuButton({ asset, label }: { asset: AssetRef; label: string }): React.JSX.Element {
@@ -26,6 +28,46 @@ export function AssetMenuButton({ asset, label }: { asset: AssetRef; label: stri
       style={{ color: "var(--text-primary)" }}
     >
       <MoreHorizontal className="w-3.5 h-3.5" />
+    </button>
+  );
+}
+
+/**
+ * Desktop-only sidebar pin at the right of a row: fades in while the row (the nearest `group`) is hovered or
+ * focused, and stays visible, filled, while the asset is pinned, unless `shouldHideUntilHover` (rows that are
+ * all pinned anyway). Clicking pins or unpins it.
+ */
+export function AssetPinButton({
+  asset,
+  label,
+  className = "",
+  shouldHideUntilHover = false,
+}: {
+  asset: AssetRef;
+  label: string;
+  className?: string;
+  shouldHideUntilHover?: boolean;
+}): React.JSX.Element {
+  useStorageVersion();
+  const { projectId } = useAssetMenu();
+  const isPinned = !!projectId && isAssetPinned(projectId, asset);
+  const isFaded = shouldHideUntilHover || !isPinned;
+  const title = isPinned ? `Unpin ${label} from the sidebar` : `Pin ${label} to the sidebar`;
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      aria-pressed={isPinned}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (projectId) toggleAssetPin(projectId, asset);
+      }}
+      className={`max-md:hidden p-0.5 rounded shrink-0 ${isFaded ? "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100" : ""} ${className}`}
+      style={{ color: isPinned ? "var(--accent)" : "var(--text-primary)" }}
+    >
+      <Pin className="w-3 h-3" fill={isPinned ? "currentColor" : "none"} />
     </button>
   );
 }

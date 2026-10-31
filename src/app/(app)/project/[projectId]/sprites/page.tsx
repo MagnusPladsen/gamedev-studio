@@ -16,7 +16,7 @@ import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import type { Sprite, SpriteSheet } from "@/types";
 import { v4 as uuid } from "uuid";
 
@@ -317,6 +317,7 @@ export default function SpriteSheetPage() {
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
+                  <AssetPinButton asset={{ type: "spritesheet", id: s.id }} label={s.name} />
                   <AssetMenuButton asset={{ type: "spritesheet", id: s.id }} label={s.name} />
                 </div>
               </div>

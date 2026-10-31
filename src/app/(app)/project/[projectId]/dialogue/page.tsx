@@ -8,7 +8,7 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import type { SaveState } from "@/hooks/useAutosave";
 import { useParams } from "next/navigation";
 import {
@@ -809,6 +809,7 @@ export default function DialoguePage() {
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  <AssetPinButton asset={{ type: "dialogue", id: t.id }} label={t.name} />
                   <AssetMenuButton asset={{ type: "dialogue", id: t.id }} label={t.name} />
                 </div>
               </div>

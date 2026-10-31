@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AssetMenuButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton } from "@/components/AssetMenuButton";
 import { useAssetMenu } from "@/components/AssetContextMenu";
 import { ASSET_ICONS } from "@/components/asset-icons";
 import { ASSET_KINDS, assetHref } from "@/lib/assets";
@@ -23,11 +23,11 @@ export function SidebarPins({ projectId, onNavigate }: { projectId: string; onNa
         {pinned.map((asset) => {
           const Icon = ASSET_ICONS[asset.type];
           return (
-            <div key={`${asset.type}:${asset.id}`} className="relative">
+            <div key={`${asset.type}:${asset.id}`} className="group relative">
               <Link
                 href={assetHref(projectId, asset.type, asset.id)}
                 onClick={onNavigate}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors max-md:pr-10"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors max-md:pr-10 md:pr-8"
                 style={{ color: "var(--text-secondary)" }}
                 {...assetTriggerProps(asset)}
               >
@@ -36,6 +36,9 @@ export function SidebarPins({ projectId, onNavigate }: { projectId: string; onNa
               </Link>
               <div className="absolute right-1 top-1/2 -translate-y-1/2 md:hidden">
                 <AssetMenuButton asset={asset} label={asset.name} />
+              </div>
+              <div className="max-md:hidden absolute right-2 top-1/2 -translate-y-1/2 flex">
+                <AssetPinButton asset={asset} label={asset.name} shouldHideUntilHover />
               </div>
             </div>
           );

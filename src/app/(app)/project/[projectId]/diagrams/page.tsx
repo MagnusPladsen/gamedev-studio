@@ -33,7 +33,7 @@ import type { Diagram, DiagramNode, DiagramEdge, AssetRef } from "@/types";
 import { useOpenParam, useTrackOpenAsset } from "@/hooks/useStorage";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import { createLongPress } from "@/lib/long-press";
 import type { Point } from "@/lib/menu-position";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, getAsset, listAssets } from "@/lib/assets";
@@ -898,6 +898,7 @@ export default function DiagramsPage() {
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  <AssetPinButton asset={{ type: "diagram", id: d.id }} label={d.name} />
                   <AssetMenuButton asset={{ type: "diagram", id: d.id }} label={d.name} />
                 </div>
               </div>

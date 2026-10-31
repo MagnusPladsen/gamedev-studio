@@ -17,7 +17,7 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import { SAMPLE_RATE, synthesize } from "@/lib/audio/sfx-synth";
 import type { SoundEffect, SfxParams } from "@/types";
 
@@ -621,7 +621,7 @@ export default function SfxPage() {
                     style={{ background: activeId === sound.id ? "var(--bg-hover)" : "transparent" }}
                     onClick={() => loadSaved(sound)}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex-1 flex items-center gap-2 min-w-0">
                       <Volume2 className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--tool-color, var(--yellow))" }} />
                       <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>
                         {sound.name}
@@ -654,6 +654,7 @@ export default function SfxPage() {
                       </button>
                       <AssetMenuButton asset={{ type: "sound", id: sound.id }} label={sound.name} />
                     </div>
+                    <AssetPinButton asset={{ type: "sound", id: sound.id }} label={sound.name} className="ml-1" />
                   </div>
                 ))}
               </div>

@@ -29,7 +29,7 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import { midiToFreq, scheduleNote } from "@/lib/audio/music-synth";
 import type { MusicTrack, MusicChannel, MusicNote } from "@/types";
 import { v4 as uuid } from "uuid";
@@ -658,6 +658,7 @@ export default function MusicPage() {
               >
                 <Trash2 className="w-3 h-3" />
               </button>
+              <AssetPinButton asset={{ type: "music", id: t.id }} label={t.name} />
               <AssetMenuButton asset={{ type: "music", id: t.id }} label={t.name} />
             </div>
           ))}

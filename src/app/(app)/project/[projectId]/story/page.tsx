@@ -35,7 +35,7 @@ import { useAutosave } from "@/hooks/useAutosave";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import { useToast } from "@/components/Toast";
 
 const ENTRY_TYPES = [
@@ -599,11 +599,11 @@ export default function StoryPage() {
                 </button>
                 {!collapsed &&
                   items.map((entry) => (
-                    <div key={entry.id} className="relative">
+                    <div key={entry.id} className="group relative">
                       <button
                         {...assetTriggerProps({ type: "story", id: entry.id })}
                         onClick={() => selectEntry(entry.id)}
-                        className="w-full text-left flex items-center gap-2 pl-8 pr-3 max-md:pr-9 py-1.5 text-xs transition-colors"
+                        className="w-full text-left flex items-center gap-2 pl-8 pr-3 max-md:pr-9 md:pr-7 py-1.5 text-xs transition-colors"
                         style={{
                           color: stored?.id === entry.id ? "var(--text-primary)" : "var(--text-secondary)",
                           background: stored?.id === entry.id ? "var(--bg-hover)" : "transparent",
@@ -613,6 +613,9 @@ export default function StoryPage() {
                       </button>
                       <div className="md:hidden absolute right-1 top-1/2 -translate-y-1/2">
                         <AssetMenuButton asset={{ type: "story", id: entry.id }} label={entry.title} />
+                      </div>
+                      <div className="max-md:hidden absolute right-2 top-1/2 -translate-y-1/2 flex">
+                        <AssetPinButton asset={{ type: "story", id: entry.id }} label={entry.title} />
                       </div>
                     </div>
                   ))}

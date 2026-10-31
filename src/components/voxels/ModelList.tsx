@@ -5,7 +5,7 @@ import { ExamplesBar } from "@/components/ExamplesBar";
 import { LinkedAssets } from "@/components/LinkedAssets";
 import { rowButtonProps } from "@/lib/row-button";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import type { VoxelModel } from "@/types";
 
 interface Props {
@@ -50,6 +50,7 @@ function ModelRow({ model, isActive, onOpen, onDelete }: { model: VoxelModel; is
         >
           <Trash2 className="w-3 h-3" />
         </button>
+        <AssetPinButton asset={{ type: "model", id: model.id }} label={model.name} />
         <AssetMenuButton asset={{ type: "model", id: model.id }} label={model.name} />
       </div>
     </div>

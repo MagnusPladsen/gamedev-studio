@@ -33,7 +33,7 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { ExamplesBar } from "@/components/ExamplesBar";
 import { SaveIndicator } from "@/components/SaveIndicator";
 import { useAssetMenu } from "@/components/AssetContextMenu";
-import { AssetMenuButton, PasteButton } from "@/components/AssetMenuButton";
+import { AssetMenuButton, AssetPinButton, PasteButton } from "@/components/AssetMenuButton";
 import { IssueDetail } from "@/components/board/IssueDetail";
 import {
   CATEGORY_LABEL,
@@ -1093,7 +1093,7 @@ function BacklogView({
                       dragId.current = null;
                       setOver(null);
                     }}
-                    className="flex items-center gap-2 px-3 py-2 border-t first:border-t-0 hover:bg-[var(--bg-hover)] cursor-pointer"
+                    className="group flex items-center gap-2 px-3 py-2 border-t first:border-t-0 hover:bg-[var(--bg-hover)] cursor-pointer"
                     style={{ borderColor: "var(--border)" }}
                     onClick={() => onOpen(issue.id)}
                   >
@@ -1131,6 +1131,7 @@ function BacklogView({
                         </option>
                       ))}
                     </select>
+                    <AssetPinButton asset={{ type: "issue", id: issue.id }} label={`${issue.key} ${issue.title}`} />
                     <AssetMenuButton asset={{ type: "issue", id: issue.id }} label={`${issue.key} ${issue.title}`} />
                   </li>
                 );
@@ -1270,7 +1271,7 @@ function AllIssuesView({
                   key={i.id}
                   {...assetTriggerProps({ type: "issue", id: i.id })}
                   onClick={() => onOpen(i.id)}
-                  className="border-t cursor-pointer hover:bg-[var(--bg-hover)]"
+                  className="group border-t cursor-pointer hover:bg-[var(--bg-hover)]"
                   style={{ borderColor: "var(--border)", opacity: i.archived ? 0.6 : 1 }}
                 >
                   <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: "var(--text-secondary)" }}>
@@ -1328,6 +1329,7 @@ function AllIssuesView({
                         <ArchiveRestore className="w-3 h-3" /> Restore
                       </button>
                     )}
+                    <AssetPinButton asset={{ type: "issue", id: i.id }} label={`${i.key} ${i.title}`} className="ml-2 align-middle" />
                   </td>
                 </tr>
               );
