@@ -14,6 +14,7 @@ import { storage, PROJECT_COLLECTIONS } from "@/lib/storage";
 import { isExample } from "@/lib/examples";
 import { ASSET_ICONS } from "@/components/asset-icons";
 import { ExamplesBar } from "@/components/ExamplesBar";
+import { NewBadge, isNewTool } from "@/components/NewBadge";
 import { ASSET_KINDS, ASSET_TYPES, assetHref, listAssets } from "@/lib/assets";
 import { getRelated } from "@/lib/links";
 import { getAssetName, getStoredAsset } from "@/lib/asset-actions";
@@ -159,8 +160,9 @@ export default function AssetsPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>
+                  <span className="font-medium text-sm flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
                     {t === "spritesheet" ? "Sprite Sheets" : t === "note" ? "Notebook" : t === "issue" ? "Task Board" : kind.label === "Story" ? "Story" : `${kind.label}s`.replace("Musics", "Music")}
+                    {isNewTool(kind.path) && <NewBadge />}
                   </span>
                   <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: kind.color }} />
                 </div>

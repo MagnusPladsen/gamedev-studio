@@ -31,6 +31,7 @@ import { anchorPoint, type Point } from "@/lib/menu-position";
 import { SidebarPins } from "@/components/SidebarPins";
 import { AccountPanel } from "@/components/AccountPanel";
 import { BetaBadge } from "@/components/BetaBadge";
+import { NewBadge, isNewTool } from "@/components/NewBadge";
 import { ASSET_KINDS } from "@/lib/assets";
 import { getPins, isToolPinned, orderTools, toggleToolPin } from "@/lib/pins";
 import { useStorageVersion } from "@/hooks/useStorage";
@@ -186,6 +187,7 @@ function AppSidebar({ children }: { children: React.ReactNode }) {
                     >
                       <tool.icon className="w-4 h-4" style={{ color: isActive ? tool.color : undefined }} />
                       {tool.name}
+                      {isNewTool(tool.path) && <NewBadge className="ml-auto max-md:mr-8" />}
                     </Link>
                   );
                   if (tool.path === "assets") return link;
