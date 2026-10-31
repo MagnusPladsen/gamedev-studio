@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BetaBadge } from "@/components/BetaBadge";
+import { DesktopDownload } from "@/components/DesktopDownload";
 import { supabaseEnabled } from "@/lib/supabase";
 import {
   Box,
@@ -19,6 +20,12 @@ import {
   NotebookPen,
   SquareKanban,
   LogIn,
+  WifiOff,
+  ShieldCheck,
+  FolderOpen,
+  UserX,
+  Gift,
+  Monitor,
 } from "lucide-react";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -58,6 +65,15 @@ const tools = [
   { icon: Package, name: "Sprite Sheet Packer", description: "Combine multiple sprites into optimized sprite sheets ready for any game engine." },
   { icon: SquareKanban, name: "Task Board", description: "Plan sprints like Jira: To Do, In Progress, Testing, Done. Issues link to the assets they're about." },
   { icon: NotebookPen, name: "Notebook", description: "Ideas, to-do lists, design docs and bug lists, with checklists and links to any asset." },
+];
+
+const localPros = [
+  { icon: WifiOff, title: "Works offline", description: "No internet needed once it's installed. Make your game on a plane or a train." },
+  { icon: ShieldCheck, title: "Private", description: "Your projects never leave your computer unless you choose to share them." },
+  { icon: FolderOpen, title: "Your files", description: "Save projects as plain JSON in any folder. Back them up, sync them, or keep them in git." },
+  { icon: UserX, title: "No account", description: "Open the app and start making. Nothing to sign up for, nothing to log in to." },
+  { icon: Gift, title: "Free forever", description: "Every tool and every export, with no watermark and no paid tier." },
+  { icon: GithubIcon, title: "Open source", description: "MIT licensed. Read the code, change it, or run it from source." },
 ];
 
 export default function LandingPage() {
@@ -158,6 +174,14 @@ export default function LandingPage() {
               <GithubIcon className="w-4 h-4" />
               View on GitHub
             </a>
+            <a
+              href="#download"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all hover:opacity-80"
+              style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+            >
+              <Monitor className="w-4 h-4" />
+              Download the app
+            </a>
           </div>
         </div>
       </section>
@@ -223,6 +247,59 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Desktop app */}
+      <section id="download" className="py-20 px-4 sm:px-6 scroll-mt-16">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-10 lg:gap-14 items-start">
+          <div>
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-5"
+              style={{ background: "var(--accent-glow)", color: "var(--accent)", border: "1px solid rgba(124,92,252,0.2)" }}
+            >
+              <Monitor className="w-3 h-3" />
+              Desktop app for Mac, Windows &amp; Linux
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4" style={{ color: "var(--text-primary)" }}>
+              Keep it on your machine
+            </h2>
+            <p className="text-lg mb-8 max-w-2xl" style={{ color: "var(--text-secondary)" }}>
+              Download GameDev Studio and run every tool on your own computer. Same studio as the web
+              version, with your projects saved where you want them.
+            </p>
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+              {localPros.map(({ icon: Icon, title, description }) => (
+                <li key={title} className="flex gap-3">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--accent-glow)", color: "var(--accent)" }}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>
+                      {title}
+                    </h3>
+                    <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                      {description}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm mt-8" style={{ color: "var(--text-muted)" }}>
+              Prefer to build it yourself?{" "}
+              <a
+                href="https://github.com/MagnusPladsen/gamedev-studio#run-it-yourself"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                Run it from source
+              </a>{" "}
+              with Node.js.
+            </p>
+          </div>
+          <DesktopDownload />
         </div>
       </section>
 
